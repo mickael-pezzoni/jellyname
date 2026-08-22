@@ -127,6 +127,18 @@ export async function runResolve(argv: string[]): Promise<void> {
   }
 
   const rl = createInterface({ input: process.stdin, output: process.stdout });
+  // rl.question() races with readline's own eager line buffering: a line that arrives before
+  // the next question() call is silently dropped (no listener is attached yet), which loses
+  // answers when resolving several items in one session. Pulling from the interface's async
+  // iterator instead queues lines properly regardless of timing.
+  const lines = rl[Symbol.asyncIterator]();
+
+  async function ask(prompt: string): Promise<string> {
+    process.stdout.write(prompt);
+    const { value, done } = await lines.next();
+    return done ? "q" : value.trim().toLowerCase();
+  }
+
   const remaining: AmbiguousItem[] = [];
   let resolvedCount = 0;
   let skippedCount = 0;
@@ -140,7 +152,7 @@ export async function runResolve(argv: string[]): Promise<void> {
       console.log(`  ${index + 1}. ${candidate.title} (${candidate.year}) — score ${candidate.score} — tmdb#${candidate.tmdbId}`);
     });
 
-    const answer = (await rl.question('  Choix (numéro, "s" pour passer, "q" pour quitter) : ')).trim().toLowerCase();
+    const answer = await ask('  Choix (numéro, "s" pour passer, "q" pour quitter) : ');
 
     if (answer === "q") {
       remaining.push(item, ...manifest.ambiguous.slice(i + 1));
