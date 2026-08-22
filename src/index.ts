@@ -8,7 +8,7 @@ import { runRender } from "./commands/render.ts";
 const USAGE = `jellyname — renomme des médias (films/séries/anime) selon la convention Jellyfin via TMDB
 
 Usage:
-  jellyname scan --dir <path> --type <movie|tv|anime> --out <path> [--dest <path>]
+  jellyname scan --dir <path> --type <movie|tv|anime> --out <path> [--dest <path>] [--lang <fr-FR>]
   jellyname resolve --report <manifest.json>
   jellyname apply --report <manifest.json> [--yes] [--retry-failed]
   jellyname render --report <manifest.json>

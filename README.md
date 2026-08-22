@@ -28,6 +28,7 @@ The workflow is split into 4 independent steps:
 jellyname scan --dir /media/tv --type tv --out ./report
 # add --dest <path> to compute new paths under a different library root than --dir
 # (defaults to --dir itself, i.e. reorganizing files in place)
+# add --lang <fr-FR> to change the TMDB search language (defaults to fr-FR, falls back to English)
 
 # 2. Manually resolve ambiguous TMDB matches (confidence score below threshold)
 jellyname resolve --report ./report/manifest.json

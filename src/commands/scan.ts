@@ -15,6 +15,7 @@ export interface ScanOptions {
   type: MediaType;
   out: string;
   dest: string;
+  lang: string;
 }
 
 function parseScanArgs(argv: string[]): ScanOptions {
@@ -25,18 +26,25 @@ function parseScanArgs(argv: string[]): ScanOptions {
       type: { type: "string" },
       out: { type: "string" },
       dest: { type: "string" },
+      lang: { type: "string" },
     },
   });
 
   if (!values.dir || !values.type || !values.out) {
-    throw new Error("Usage: jellyname scan --dir <path> --type <movie|tv|anime> --out <path> [--dest <path>]");
+    throw new Error("Usage: jellyname scan --dir <path> --type <movie|tv|anime> --out <path> [--dest <path>] [--lang <fr-FR>]");
   }
 
   if (values.type !== "movie" && values.type !== "tv" && values.type !== "anime") {
     throw new Error(`--type invalide: "${values.type}" (attendu: movie, tv ou anime)`);
   }
 
-  return { dir: values.dir, type: values.type, out: values.out, dest: values.dest ?? values.dir };
+  return {
+    dir: values.dir,
+    type: values.type,
+    out: values.out,
+    dest: values.dest ?? values.dir,
+    lang: values.lang ?? "fr-FR",
+  };
 }
 
 function getOrCreateShow(
@@ -73,6 +81,8 @@ export async function runScan(argv: string[]): Promise<void> {
   const files = await walkVideoFiles(options.dir);
   console.log(`${files.length} fichier(s) vidéo trouvé(s) dans ${options.dir}`);
 
+  const languages = options.lang === "en-US" ? ["en-US"] : [options.lang, "en-US"];
+
   const movies: MovieItem[] = [];
   const showsByTmdbId = new Map<number, ShowItem>();
   const ambiguous: AmbiguousItem[] = [];
@@ -92,8 +102,8 @@ export async function runScan(argv: string[]): Promise<void> {
 
     const candidates =
       options.type === "movie"
-        ? await searchMovie(parsed.title, parsed.year)
-        : await searchTv(parsed.title, parsed.year);
+        ? await searchMovie(parsed.title, parsed.year, languages)
+        : await searchTv(parsed.title, parsed.year, languages);
 
     const result = matchTitle(parsed.title, parsed.year, candidates);
 

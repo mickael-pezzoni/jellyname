@@ -57,12 +57,24 @@ export function scoreCandidates(
     return { candidate, score };
   });
 
-  scored.sort((a, b) => {
+  // The same movie/show can appear once per searched language, each time with a different
+  // localized title. Keep only the best-scoring variant per tmdbId — i.e. whichever language's
+  // title happens to match the filename most closely.
+  const bestByTmdbId = new Map<number, ScoredCandidate>();
+  for (const entry of scored) {
+    const existing = bestByTmdbId.get(entry.candidate.tmdbId);
+    if (!existing || entry.score > existing.score) {
+      bestByTmdbId.set(entry.candidate.tmdbId, entry);
+    }
+  }
+  const deduped = [...bestByTmdbId.values()];
+
+  deduped.sort((a, b) => {
     if (Math.abs(b.score - a.score) > SCORE_EPSILON) return b.score - a.score;
     return b.candidate.popularity - a.candidate.popularity;
   });
 
-  return scored;
+  return deduped;
 }
 
 export type MatchResult =
@@ -74,7 +86,7 @@ export function matchTitle(
   parsedTitle: string,
   parsedYear: number | null,
   candidates: Candidate[],
-  confidenceThreshold = 0.9,
+  confidenceThreshold = 0.7,
 ): MatchResult {
   if (candidates.length === 0) {
     return { kind: "unmatched" };
