@@ -74,6 +74,54 @@ function renderShow(show: ShowItem): string {
     </details>`;
 }
 
+interface FailedEntry {
+  label: string;
+  oldPath: string;
+  newPath: string;
+  error: string | null;
+}
+
+function collectFailedEntries(report: AggregatedReport): FailedEntry[] {
+  const entries: FailedEntry[] = [];
+
+  for (const movie of report.movies) {
+    if (movie.status === "failed") {
+      entries.push({ label: `${movie.title} (${movie.year})`, oldPath: movie.oldPath, newPath: movie.newPath, error: movie.error });
+    }
+  }
+
+  for (const show of report.shows) {
+    for (const season of show.seasons) {
+      for (const episode of season.episodes) {
+        if (episode.status === "failed") {
+          entries.push({
+            label: `${show.title} S${String(season.season).padStart(2, "0")}E${String(episode.episode).padStart(2, "0")}`,
+            oldPath: episode.oldPath,
+            newPath: episode.newPath,
+            error: episode.error,
+          });
+        }
+      }
+    }
+  }
+
+  return entries;
+}
+
+function renderFailedRow(entry: FailedEntry): string {
+  const search = escapeAttr(entry.label);
+  return `
+    <div class="unmatched-item" data-search="${search}">
+      <div class="path">${escapeHtml(entry.label)}</div>
+      <div class="paths">
+        <div class="old" title="${escapeAttr(entry.oldPath)}">${escapeHtml(basename(entry.oldPath))}</div>
+        <div class="arrow">&rarr;</div>
+        <div class="new" title="${escapeAttr(entry.newPath)}">${escapeHtml(basename(entry.newPath))}</div>
+      </div>
+      <div class="meta">${escapeHtml(entry.error ?? "")}</div>
+    </div>`;
+}
+
 const STYLE = `
   :root {
     color-scheme: light dark;
@@ -188,6 +236,11 @@ export function renderReportHtml(report: AggregatedReport): string {
         .join("")
     : `<div class="empty">No unmatched files.</div>`;
 
+  const failedEntries = collectFailedEntries(report);
+  const failedSection = failedEntries.length
+    ? failedEntries.map(renderFailedRow).join("")
+    : `<div class="empty">No failed items.</div>`;
+
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -204,11 +257,13 @@ export function renderReportHtml(report: AggregatedReport): string {
     <button class="tab-btn active" data-tab="matched">Identified (${matchedCount})</button>
     <button class="tab-btn" data-tab="ambiguous">Ambiguous (${report.ambiguous.length})</button>
     <button class="tab-btn" data-tab="unmatched">Unmatched (${report.unmatched.length})</button>
+    <button class="tab-btn" data-tab="failed">Failed (${failedEntries.length})</button>
   </div>
 </header>
 <div id="tab-matched" class="tab-panel active">${matchedSection}</div>
 <div id="tab-ambiguous" class="tab-panel">${ambiguousSection}</div>
 <div id="tab-unmatched" class="tab-panel">${unmatchedSection}</div>
+<div id="tab-failed" class="tab-panel">${failedSection}</div>
 <script>${SEARCH_SCRIPT}${TABS_SCRIPT}</script>
 </body>
 </html>`;
