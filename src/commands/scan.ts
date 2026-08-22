@@ -13,12 +13,14 @@ import { writeReport } from "../report/writer.ts";
 const TMDB_LANGUAGES = ["fr-FR", "en-US"];
 
 // The season is sometimes only encoded in the containing folder ("Saison 3/", "Season 03/",
-// "S3/"), not in the episode filename itself — this is common enough in this library's layout
-// that the folder is treated as the authoritative source when it matches, overriding whatever
-// the filename parser guessed (which defaults to season 1 when it finds nothing).
+// "Show Name S02/"), not in the episode filename itself — this is common enough in this
+// library's layout that the folder is treated as the authoritative source when it matches,
+// overriding whatever the filename parser guessed (which defaults to season 1 when it finds
+// nothing). Matched anywhere in the name (not just as the whole folder name), since the show's
+// title is sometimes prefixed onto the season marker rather than living in its own folder.
 function extractSeasonFromFolderName(folderName: string): number | null {
   const match =
-    folderName.match(/^(?:saison|season)[\s._-]*0*(\d{1,3})$/i) ?? folderName.match(/^s0*(\d{1,3})$/i);
+    folderName.match(/(?:saison|season)[\s._-]*0*(\d{1,3})\b/i) ?? folderName.match(/\bs0*(\d{1,3})\b/i);
   return match ? Number(match[1]) : null;
 }
 

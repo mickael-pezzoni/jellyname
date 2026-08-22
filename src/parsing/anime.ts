@@ -51,6 +51,19 @@ function cleanEpisodeTitle(rawTitle: string | undefined): string | null {
   return rawTitle;
 }
 
+// anitomyscript doesn't always recognize a trailing season marker as such (e.g. "Shakugan no
+// Shana S02"), leaving it stuck on anime_title instead of populating anime_season. Besides being
+// wrong, the leftover "S02" breaks TMDB's search outright. Strip it and recover the season number
+// from it when anime_season itself came back empty.
+const TRAILING_SEASON_IN_TITLE = /\s+(?:saison|season)\s*0*(\d{1,3})$|\s+s0*(\d{1,3})$/i;
+
+function stripTrailingSeasonFromTitle(title: string): { title: string; season: number | null } {
+  const match = title.match(TRAILING_SEASON_IN_TITLE);
+  if (!match) return { title, season: null };
+  const season = Number(match[1] ?? match[2]);
+  return { title: title.slice(0, match.index).trim(), season };
+}
+
 export async function parseAnimeEpisodeFilename(fileName: string): Promise<ParsedEpisode | null> {
   await ensureWasmInitialized();
   const result = await anitomyParse(fileName);
@@ -68,11 +81,13 @@ export async function parseAnimeEpisodeFilename(fileName: string): Promise<Parse
   const episode = Number(single.episode_number);
   if (!Number.isFinite(episode)) return null;
 
+  const { title, season: titleSeason } = stripTrailingSeasonFromTitle(single.anime_title);
+
   return {
     kind: "episode",
-    title: single.anime_title,
+    title,
     year: single.anime_year ? Number(single.anime_year) : null,
-    season: single.anime_season ? Number(single.anime_season) : 1,
+    season: single.anime_season ? Number(single.anime_season) : (titleSeason ?? 1),
     episode,
     episodeTitle: cleanEpisodeTitle(single.episode_title),
   };
