@@ -108,6 +108,13 @@ const STYLE = `
   .ambiguous-item, .unmatched-item { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; background: var(--card); }
   .ambiguous-item .path, .unmatched-item .path { font-weight: 500; margin-bottom: 4px; }
   .hidden { display: none !important; }
+  .empty { color: var(--muted); padding: 12px 0; }
+  .tabs { display: flex; gap: 4px; margin-top: 16px; border-bottom: 1px solid var(--border); }
+  .tab-btn { appearance: none; border: none; background: none; color: var(--muted); font: inherit; font-weight: 600; padding: 8px 14px; cursor: pointer; border-bottom: 2px solid transparent; }
+  .tab-btn:hover { color: var(--fg); }
+  .tab-btn.active { color: var(--fg); border-bottom-color: var(--fg); }
+  .tab-panel { display: none; margin-top: 16px; }
+  .tab-panel.active { display: block; }
 `;
 
 const SEARCH_SCRIPT = `
@@ -128,18 +135,32 @@ const SEARCH_SCRIPT = `
   });
 `;
 
+const TABS_SCRIPT = `
+  document.querySelectorAll(".tab-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
+      document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
+      btn.classList.add("active");
+      document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
+    });
+  });
+`;
+
 export function renderReportHtml(report: AggregatedReport): string {
   const episodeCount = report.shows.reduce((n, s) => n + s.seasons.reduce((m, se) => m + se.episodes.length, 0), 0);
   const matchedCount = report.movies.length + episodeCount;
 
   const matchedSection =
     report.type === "movie"
-      ? `<div class="movies">${report.movies.map(renderMovieRow).join("")}</div>`
-      : report.shows.sort((a, b) => a.title.localeCompare(b.title)).map(renderShow).join("");
+      ? report.movies.length
+        ? `<div class="movies">${report.movies.map(renderMovieRow).join("")}</div>`
+        : `<div class="empty">Aucun film identifié.</div>`
+      : report.shows.length
+        ? report.shows.sort((a, b) => a.title.localeCompare(b.title)).map(renderShow).join("")
+        : `<div class="empty">Aucune série identifiée.</div>`;
 
   const ambiguousSection = report.ambiguous.length
-    ? `<h2>Ambigus (${report.ambiguous.length})</h2>` +
-      report.ambiguous
+    ? report.ambiguous
         .map(
           (item) => `
       <div class="ambiguous-item">
@@ -153,11 +174,10 @@ export function renderReportHtml(report: AggregatedReport): string {
       </div>`,
         )
         .join("")
-    : "";
+    : `<div class="empty">Aucun item ambigu.</div>`;
 
   const unmatchedSection = report.unmatched.length
-    ? `<h2>Non identifiés (${report.unmatched.length})</h2>` +
-      report.unmatched
+    ? report.unmatched
         .map(
           (item) => `
       <div class="unmatched-item">
@@ -166,7 +186,7 @@ export function renderReportHtml(report: AggregatedReport): string {
       </div>`,
         )
         .join("")
-    : "";
+    : `<div class="empty">Aucun fichier non identifié.</div>`;
 
   return `<!doctype html>
 <html lang="fr">
@@ -178,13 +198,18 @@ export function renderReportHtml(report: AggregatedReport): string {
 <body>
 <header>
   <h1>Rapport jellyname</h1>
-  <div class="meta">Type: ${report.type} &middot; généré le ${escapeHtml(report.generatedAt)} &middot; ${matchedCount} identifié(s), ${report.ambiguous.length} ambigu(s), ${report.unmatched.length} non identifié(s)</div>
+  <div class="meta">Type: ${report.type} &middot; généré le ${escapeHtml(report.generatedAt)}</div>
   <input id="search" type="text" placeholder="Filtrer par titre...">
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="matched">Identifiés (${matchedCount})</button>
+    <button class="tab-btn" data-tab="ambiguous">Ambigus (${report.ambiguous.length})</button>
+    <button class="tab-btn" data-tab="unmatched">Non identifiés (${report.unmatched.length})</button>
+  </div>
 </header>
-<section>${matchedSection}</section>
-<section>${ambiguousSection}</section>
-<section>${unmatchedSection}</section>
-<script>${SEARCH_SCRIPT}</script>
+<div id="tab-matched" class="tab-panel active">${matchedSection}</div>
+<div id="tab-ambiguous" class="tab-panel">${ambiguousSection}</div>
+<div id="tab-unmatched" class="tab-panel">${unmatchedSection}</div>
+<script>${SEARCH_SCRIPT}${TABS_SCRIPT}</script>
 </body>
 </html>`;
 }
