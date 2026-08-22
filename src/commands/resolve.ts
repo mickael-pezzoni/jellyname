@@ -108,6 +108,22 @@ function applyResolution(
   });
 }
 
+// For tv/anime, several episodes of the same show typically share an identical parsed title —
+// group them so the user picks a candidate once per show instead of once per episode.
+function groupAmbiguousItems(items: AmbiguousItem[], type: MediaType): AmbiguousItem[][] {
+  if (type === "movie") {
+    return items.map((item) => [item]);
+  }
+
+  const groups = new Map<string, AmbiguousItem[]>();
+  for (const item of items) {
+    const group = groups.get(item.parsedTitle) ?? [];
+    group.push(item);
+    groups.set(item.parsedTitle, group);
+  }
+  return [...groups.values()];
+}
+
 export async function runResolve(argv: string[]): Promise<void> {
   const options = parseResolveArgs(argv);
   const dir = dirname(options.report);
@@ -145,42 +161,46 @@ export async function runResolve(argv: string[]): Promise<void> {
     return done ? "q" : value.trim().toLowerCase();
   }
 
+  const groups = groupAmbiguousItems(manifest.ambiguous, manifest.type);
   const remaining: AmbiguousItem[] = [];
   let resolvedCount = 0;
   let skippedCount = 0;
 
-  for (let i = 0; i < manifest.ambiguous.length; i++) {
-    const item = manifest.ambiguous[i]!;
+  for (let i = 0; i < groups.length; i++) {
+    const group = groups[i]!;
+    const first = group[0]!;
 
-    console.log(`\n[${i + 1}/${manifest.ambiguous.length}] ${basename(item.oldPath)}`);
-    console.log(`  titre détecté : "${item.parsedTitle}"${item.parsedYear ? ` (${item.parsedYear})` : ""}`);
-    item.candidates.forEach((candidate, index) => {
+    console.log(`\n[${i + 1}/${groups.length}] "${first.parsedTitle}"${first.parsedYear ? ` (${first.parsedYear})` : ""}`);
+    console.log(group.length === 1 ? `  ${basename(first.oldPath)}` : `  ${group.length} épisodes concernés`);
+    first.candidates.forEach((candidate, index) => {
       console.log(`  ${index + 1}. ${candidate.title} (${candidate.year}) — score ${candidate.score} — tmdb#${candidate.tmdbId}`);
     });
 
     const answer = await ask('  Choix (numéro, "s" pour passer, "q" pour quitter) : ');
 
     if (answer === "q") {
-      remaining.push(item, ...manifest.ambiguous.slice(i + 1));
+      remaining.push(...group, ...groups.slice(i + 1).flat());
       break;
     }
 
     if (answer === "s" || answer === "") {
-      remaining.push(item);
-      skippedCount++;
+      remaining.push(...group);
+      skippedCount += group.length;
       continue;
     }
 
-    const chosen = item.candidates[Number(answer) - 1];
+    const chosen = first.candidates[Number(answer) - 1];
     if (!chosen) {
-      console.log("  Choix invalide, item laissé de côté (relance resolve pour retenter).");
-      remaining.push(item);
-      skippedCount++;
+      console.log("  Choix invalide, groupe laissé de côté (relance resolve pour retenter).");
+      remaining.push(...group);
+      skippedCount += group.length;
       continue;
     }
 
-    applyResolution(parts, dir, manifest.type, item, chosen, manifest.libraryRoot);
-    resolvedCount++;
+    for (const item of group) {
+      applyResolution(parts, dir, manifest.type, item, chosen, manifest.libraryRoot);
+      resolvedCount++;
+    }
   }
 
   rl.close();
