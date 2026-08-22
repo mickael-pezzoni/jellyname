@@ -26,6 +26,8 @@ The workflow is split into 4 independent steps:
 ```bash
 # 1. Scan a folder and generate a report (no writes to media files)
 jellyname scan --dir /media/tv --type tv --out ./report
+# add --dest <path> to compute new paths under a different library root than --dir
+# (defaults to --dir itself, i.e. reorganizing files in place)
 
 # 2. Manually resolve ambiguous TMDB matches (confidence score below threshold)
 jellyname resolve --report ./report/manifest.json
