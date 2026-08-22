@@ -83,24 +83,38 @@ function collectItems(loadedPart: LoadedPart): QueuedItem[] {
   return items;
 }
 
-function validate(parts: LoadedPart[]): string[] {
+interface ValidationResult {
+  errors: string[];
+  duplicateGroups: Map<string, QueuedItem[]>;
+}
+
+// Missing paths mean the report itself is corrupted — refuse to touch anything. A duplicate
+// newPath is different: the report is otherwise fine, it's just that two items would land on
+// the same file. Aborting the whole run over one collision is too harsh, so those items are
+// marked failed and skipped instead, letting everything else proceed.
+function validate(parts: LoadedPart[]): ValidationResult {
   const errors: string[] = [];
-  const seenNewPaths = new Set<string>();
+  const byNewPath = new Map<string, QueuedItem[]>();
 
   for (const loadedPart of parts) {
-    for (const { item, label } of collectItems(loadedPart)) {
+    for (const entry of collectItems(loadedPart)) {
+      const { item, label } = entry;
       if (!item.oldPath || !item.newPath) {
         errors.push(`item invalide (chemin manquant) dans ${loadedPart.fileName}: ${label}`);
         continue;
       }
-      if (seenNewPaths.has(item.newPath)) {
-        errors.push(`newPath en double: "${item.newPath}"`);
-      }
-      seenNewPaths.add(item.newPath);
+      const group = byNewPath.get(item.newPath) ?? [];
+      group.push(entry);
+      byNewPath.set(item.newPath, group);
     }
   }
 
-  return errors;
+  const duplicateGroups = new Map<string, QueuedItem[]>();
+  for (const [newPath, group] of byNewPath) {
+    if (group.length > 1) duplicateGroups.set(newPath, group);
+  }
+
+  return { errors, duplicateGroups };
 }
 
 async function askConfirmation(question: string): Promise<boolean> {
@@ -139,8 +153,9 @@ export async function runApply(argv: string[]): Promise<void> {
   const options = parseApplyArgs(argv);
 
   const { manifest, parts } = await loadManifestAndParts(options.report);
+  const partsByFileName = new Map(parts.map((p) => [p.fileName, p]));
 
-  const validationErrors = validate(parts);
+  const { errors: validationErrors, duplicateGroups } = validate(parts);
   if (validationErrors.length > 0) {
     console.error("Rapport invalide, apply annulé :");
     for (const error of validationErrors) console.error(`  - ${error}`);
@@ -148,8 +163,32 @@ export async function runApply(argv: string[]): Promise<void> {
     return;
   }
 
+  if (duplicateGroups.size > 0) {
+    console.log(`${duplicateGroups.size} newPath en double détecté(s), ignoré(s) :`);
+    const touchedParts = new Set<string>();
+
+    for (const [newPath, group] of duplicateGroups) {
+      console.log(`  - ${newPath} (${group.length} fichiers)`);
+      for (const { item, partFileName } of group) {
+        item.status = "failed";
+        item.error = "newPath en double avec un autre item du rapport";
+        touchedParts.add(partFileName);
+      }
+    }
+
+    for (const fileName of touchedParts) {
+      const loadedPart = partsByFileName.get(fileName)!;
+      await writeFile(loadedPart.path, JSON.stringify(loadedPart.part, null, 2));
+    }
+  }
+
+  const duplicateItems = new Set([...duplicateGroups.values()].flat().map(({ item }) => item));
+
   const allItems = parts.flatMap(collectItems);
   const toProcess = allItems.filter(({ item }) => {
+    // Never retry a duplicate within this same run, even with --retry-failed — that flag is for
+    // retrying transient failures from a previous run, not items just marked failed above.
+    if (duplicateItems.has(item)) return false;
     if (item.status === "done") return false;
     if (item.status === "failed" && !options.retryFailed) return false;
     return true;
@@ -172,8 +211,6 @@ export async function runApply(argv: string[]): Promise<void> {
       return;
     }
   }
-
-  const partsByFileName = new Map(parts.map((p) => [p.fileName, p]));
 
   let done = 0;
   let failed = 0;
