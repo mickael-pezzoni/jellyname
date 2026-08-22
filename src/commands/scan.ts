@@ -1,5 +1,5 @@
 import { parseArgs } from "node:util";
-import { basename, extname, join, relative } from "node:path";
+import { basename, dirname, extname, join, relative } from "node:path";
 import type { MediaType } from "../report/types.ts";
 import type { AmbiguousItem, EpisodeItem, MovieItem, SeasonItem, ShowItem, UnmatchedItem } from "../report/types.ts";
 import { walkVideoFiles } from "../fs/walk.ts";
@@ -11,6 +11,16 @@ import { episodeFileName, movieTargetPath, seasonTargetDir, showRoot } from "../
 import { writeReport } from "../report/writer.ts";
 
 const TMDB_LANGUAGES = ["fr-FR", "en-US"];
+
+// The season is sometimes only encoded in the containing folder ("Saison 3/", "Season 03/",
+// "S3/"), not in the episode filename itself — this is common enough in this library's layout
+// that the folder is treated as the authoritative source when it matches, overriding whatever
+// the filename parser guessed (which defaults to season 1 when it finds nothing).
+function extractSeasonFromFolderName(folderName: string): number | null {
+  const match =
+    folderName.match(/^(?:saison|season)[\s._-]*0*(\d{1,3})$/i) ?? folderName.match(/^s0*(\d{1,3})$/i);
+  return match ? Number(match[1]) : null;
+}
 
 export interface ScanOptions {
   dir: string;
@@ -90,6 +100,13 @@ export async function runScan(argv: string[]): Promise<void> {
       console.log("✗ non parsable");
       unmatched.push({ oldPath, reason: "impossible d'extraire le titre/l'épisode du nom de fichier" });
       continue;
+    }
+
+    if (parsed.kind === "episode") {
+      const folderSeason = extractSeasonFromFolderName(basename(dirname(oldPath)));
+      if (folderSeason !== null) {
+        parsed.season = folderSeason;
+      }
     }
 
     const candidates =

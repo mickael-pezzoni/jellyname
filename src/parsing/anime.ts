@@ -19,6 +19,29 @@ async function ensureWasmInitialized(): Promise<void> {
   }
 }
 
+// anitomyscript doesn't recognize every audio/language release tag (notably French-scene ones
+// like "MULTi"); when it doesn't, it falls back to classifying the token as the episode title
+// instead of dropping it. Filter out the ones we know aren't real episode titles.
+const NON_TITLE_TAGS = new Set([
+  "multi",
+  "multi-audio",
+  "vostfr",
+  "vf",
+  "vff",
+  "vfq",
+  "vo",
+  "dual",
+  "dual-audio",
+  "subbed",
+  "dubbed",
+  "truefrench",
+]);
+
+function cleanEpisodeTitle(rawTitle: string | undefined): string | null {
+  if (!rawTitle) return null;
+  return NON_TITLE_TAGS.has(rawTitle.trim().toLowerCase()) ? null : rawTitle;
+}
+
 export async function parseAnimeEpisodeFilename(fileName: string): Promise<ParsedEpisode | null> {
   await ensureWasmInitialized();
   const result = await anitomyParse(fileName);
@@ -35,6 +58,6 @@ export async function parseAnimeEpisodeFilename(fileName: string): Promise<Parse
     year: single.anime_year ? Number(single.anime_year) : null,
     season: single.anime_season ? Number(single.anime_season) : 1,
     episode,
-    episodeTitle: single.episode_title ?? null,
+    episodeTitle: cleanEpisodeTitle(single.episode_title),
   };
 }
