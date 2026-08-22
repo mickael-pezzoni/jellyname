@@ -114,6 +114,12 @@ export async function runResolve(argv: string[]): Promise<void> {
 
   const manifest = JSON.parse(await readFile(options.report, "utf-8")) as Manifest;
 
+  if (typeof manifest.libraryRoot !== "string") {
+    throw new Error(
+      `${options.report} n'a pas de champ "libraryRoot" — ce rapport a été généré par une version plus ancienne de jellyname. Relance "jellyname scan" pour régénérer un rapport à jour avant de résoudre les ambigus.`,
+    );
+  }
+
   if (manifest.ambiguous.length === 0) {
     console.log("Aucun item ambigu à résoudre.");
     return;
