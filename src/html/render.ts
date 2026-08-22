@@ -16,7 +16,7 @@ function escapeAttr(value: string): string {
 }
 
 function statusBadge(status: ItemStatus, error: string | null): string {
-  const label = { pending: "en attente", done: "fait", failed: "échec" }[status];
+  const label = { pending: "pending", done: "done", failed: "failed" }[status];
   const title = error ? ` title="${escapeAttr(error)}"` : "";
   return `<span class="status status-${status}"${title}>${label}</span>`;
 }
@@ -56,7 +56,7 @@ function renderShow(show: ShowItem): string {
     .map(
       (season) => `
       <details class="season" open>
-        <summary>Season ${String(season.season).padStart(2, "0")} &middot; ${season.episodes.length} épisode(s)</summary>
+        <summary>Season ${String(season.season).padStart(2, "0")} &middot; ${season.episodes.length} episode(s)</summary>
         <ul class="episodes">
           ${season.episodes
             .sort((a, b) => a.episode - b.episode)
@@ -69,7 +69,7 @@ function renderShow(show: ShowItem): string {
 
   return `
     <details class="show" data-search="${search}" open>
-      <summary>${escapeHtml(show.title)} (${show.year}) &middot; ${episodeCount} épisode(s)</summary>
+      <summary>${escapeHtml(show.title)} (${show.year}) &middot; ${episodeCount} episode(s)</summary>
       ${seasons}
     </details>`;
 }
@@ -154,10 +154,10 @@ export function renderReportHtml(report: AggregatedReport): string {
     report.type === "movie"
       ? report.movies.length
         ? `<div class="movies">${report.movies.map(renderMovieRow).join("")}</div>`
-        : `<div class="empty">Aucun film identifié.</div>`
+        : `<div class="empty">No movies identified.</div>`
       : report.shows.length
         ? report.shows.sort((a, b) => a.title.localeCompare(b.title)).map(renderShow).join("")
-        : `<div class="empty">Aucune série identifiée.</div>`;
+        : `<div class="empty">No shows identified.</div>`;
 
   const ambiguousSection = report.ambiguous.length
     ? report.ambiguous
@@ -174,7 +174,7 @@ export function renderReportHtml(report: AggregatedReport): string {
       </div>`,
         )
         .join("")
-    : `<div class="empty">Aucun item ambigu.</div>`;
+    : `<div class="empty">No ambiguous items.</div>`;
 
   const unmatchedSection = report.unmatched.length
     ? report.unmatched
@@ -186,24 +186,24 @@ export function renderReportHtml(report: AggregatedReport): string {
       </div>`,
         )
         .join("")
-    : `<div class="empty">Aucun fichier non identifié.</div>`;
+    : `<div class="empty">No unmatched files.</div>`;
 
   return `<!doctype html>
-<html lang="fr">
+<html lang="en">
 <head>
 <meta charset="utf-8">
-<title>jellyname — rapport</title>
+<title>jellyname — report</title>
 <style>${STYLE}</style>
 </head>
 <body>
 <header>
-  <h1>Rapport jellyname</h1>
-  <div class="meta">Type: ${report.type} &middot; généré le ${escapeHtml(report.generatedAt)}</div>
-  <input id="search" type="text" placeholder="Filtrer par titre...">
+  <h1>jellyname report</h1>
+  <div class="meta">Type: ${report.type} &middot; generated on ${escapeHtml(report.generatedAt)}</div>
+  <input id="search" type="text" placeholder="Filter by title...">
   <div class="tabs">
-    <button class="tab-btn active" data-tab="matched">Identifiés (${matchedCount})</button>
-    <button class="tab-btn" data-tab="ambiguous">Ambigus (${report.ambiguous.length})</button>
-    <button class="tab-btn" data-tab="unmatched">Non identifiés (${report.unmatched.length})</button>
+    <button class="tab-btn active" data-tab="matched">Identified (${matchedCount})</button>
+    <button class="tab-btn" data-tab="ambiguous">Ambiguous (${report.ambiguous.length})</button>
+    <button class="tab-btn" data-tab="unmatched">Unmatched (${report.unmatched.length})</button>
   </div>
 </header>
 <div id="tab-matched" class="tab-panel active">${matchedSection}</div>
