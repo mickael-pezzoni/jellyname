@@ -23,14 +23,18 @@ function parseRenderArgs(argv: string[]): RenderOptions {
   return { report: values.report };
 }
 
-export async function runRender(argv: string[]): Promise<void> {
-  const options = parseRenderArgs(argv);
-
-  const report = await readReport(options.report);
+export async function renderReport(manifestPath: string): Promise<string> {
+  const report = await readReport(manifestPath);
   const html = renderReportHtml(report);
 
-  const outputPath = join(dirname(options.report), "report.html");
+  const outputPath = join(dirname(manifestPath), "report.html");
   await writeFile(outputPath, html);
 
+  return outputPath;
+}
+
+export async function runRender(argv: string[]): Promise<void> {
+  const options = parseRenderArgs(argv);
+  const outputPath = await renderReport(options.report);
   console.log(`Page générée : ${outputPath}`);
 }

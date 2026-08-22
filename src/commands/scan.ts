@@ -10,6 +10,7 @@ import type { Candidate } from "../tmdb/types.ts";
 import { matchTitle } from "../tmdb/match.ts";
 import { episodeFileName, movieTargetPath, seasonTargetDir, showRoot } from "../report/naming.ts";
 import { writeReport } from "../report/writer.ts";
+import { renderReport } from "./render.ts";
 
 const TMDB_LANGUAGES = ["fr-FR", "en-US"];
 
@@ -42,6 +43,7 @@ export interface ScanOptions {
   type: MediaType;
   out: string;
   dest: string;
+  render: boolean;
 }
 
 function parseScanArgs(argv: string[]): ScanOptions {
@@ -52,18 +54,27 @@ function parseScanArgs(argv: string[]): ScanOptions {
       type: { type: "string" },
       out: { type: "string" },
       dest: { type: "string" },
+      render: { type: "boolean", default: false },
     },
   });
 
   if (!values.dir || !values.type || !values.out) {
-    throw new Error("Usage: jellyname scan --dir <path> --type <movie|tv|anime> --out <path> [--dest <path>]");
+    throw new Error(
+      "Usage: jellyname scan --dir <path> --type <movie|tv|anime> --out <path> [--dest <path>] [--render]",
+    );
   }
 
   if (values.type !== "movie" && values.type !== "tv" && values.type !== "anime") {
     throw new Error(`--type invalide: "${values.type}" (attendu: movie, tv ou anime)`);
   }
 
-  return { dir: values.dir, type: values.type, out: values.out, dest: values.dest ?? values.dir };
+  return {
+    dir: values.dir,
+    type: values.type,
+    out: values.out,
+    dest: values.dest ?? values.dir,
+    render: values.render ?? false,
+  };
 }
 
 function getOrCreateShow(
@@ -227,4 +238,9 @@ export async function runScan(argv: string[]): Promise<void> {
 
   console.log(`\nRapport écrit : ${manifestPath}`);
   console.log(`${matchedCount} identifié(s), ${ambiguous.length} ambigu(s), ${unmatched.length} non identifié(s)`);
+
+  if (options.render) {
+    const htmlPath = await renderReport(manifestPath);
+    console.log(`Page générée : ${htmlPath}`);
+  }
 }
