@@ -55,6 +55,8 @@ The tool is deliberately split into four **independent** steps that communicate 
 
 `manifest.libraryRoot` (set from `scan`'s `--dest`, defaulting to `--dir`) is the root new paths are computed under — `resolve` needs it to build `newPath` for items that had none at scan time.
 
+**Season resolution for `tv`/`anime`**: filenames don't always carry a season marker (this library organizes episodes as `Show/Saison N/episode-file`, with the season sometimes absent from the filename itself). `commands/scan.ts` overrides `parsed.season` from the immediate parent folder name (`Saison 3`, `Season 03`, `S3`, case-insensitive) whenever that folder matches, taking priority over the filename parser's own guess (which otherwise defaults to season 1). Don't drop this in favor of trusting the filename alone. Separately, `parsing/anime.ts` filters a known set of audio/language tags (`MULTi`, `VOSTFR`, `VF`, ...) out of `episodeTitle`, since anitomyscript sometimes misclassifies an unrecognized one as the episode title instead of ignoring it.
+
 ### Directory layout
 
 ```
