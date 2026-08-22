@@ -64,7 +64,7 @@ report/
   report.html        # generated on demand via `render`, data embedded inline (no fetch)
 ```
 
-An existing file at the destination path is never overwritten — the corresponding item is marked `failed` instead.
+An existing file at the destination path is never overwritten — the corresponding item is marked `failed` instead. A duplicate `newPath` between two items doesn't abort the run either — both are marked `failed` and everything else proceeds. After a successful move, the source directory is removed if (and only if) it's left completely empty.
 
 ## Project structure
 
