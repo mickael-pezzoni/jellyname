@@ -111,6 +111,9 @@ export async function runScan(argv: string[]): Promise<void> {
         oldPath,
         parsedTitle: parsed.title,
         parsedYear: parsed.year,
+        ...(parsed.kind === "episode"
+          ? { season: parsed.season, episode: parsed.episode, episodeTitle: parsed.episodeTitle ?? "" }
+          : {}),
         candidates: result.candidates.map((scored) => ({
           tmdbId: scored.candidate.tmdbId,
           title: scored.candidate.title,
@@ -155,7 +158,14 @@ export async function runScan(argv: string[]): Promise<void> {
   }
 
   const shows = [...showsByTmdbId.values()];
-  const manifestPath = await writeReport(options.out, { type: options.type, movies, shows, ambiguous, unmatched });
+  const manifestPath = await writeReport(options.out, {
+    type: options.type,
+    libraryRoot: options.dest,
+    movies,
+    shows,
+    ambiguous,
+    unmatched,
+  });
 
   const episodeCount = shows.reduce((n, s) => n + s.seasons.reduce((m, se) => m + se.episodes.length, 0), 0);
   const matchedCount = movies.length + episodeCount;

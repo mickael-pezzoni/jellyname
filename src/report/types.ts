@@ -5,6 +5,7 @@ export type ItemStatus = "pending" | "done" | "failed";
 export interface Manifest {
   type: MediaType;
   generatedAt: string;
+  libraryRoot: string;
   parts: string[];
   ambiguous: AmbiguousItem[];
   unmatched: UnmatchedItem[];
@@ -61,8 +62,10 @@ export interface AmbiguousItem {
   oldPath: string;
   parsedTitle: string;
   parsedYear: number | null;
+  season?: number;
+  episode?: number;
+  episodeTitle?: string;
   candidates: AmbiguousCandidate[];
-  resolvedTmdbId?: number;
 }
 
 export interface UnmatchedItem {
