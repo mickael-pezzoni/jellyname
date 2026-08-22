@@ -1,4 +1,8 @@
 import { parseArgs } from "node:util";
+import { writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { readReport } from "../report/reader.ts";
+import { renderReportHtml } from "../html/render.ts";
 
 export interface RenderOptions {
   report: string;
@@ -21,6 +25,12 @@ function parseRenderArgs(argv: string[]): RenderOptions {
 
 export async function runRender(argv: string[]): Promise<void> {
   const options = parseRenderArgs(argv);
-  console.log(`render: report=${options.report}`);
-  throw new Error("render: pas encore implémenté");
+
+  const report = await readReport(options.report);
+  const html = renderReportHtml(report);
+
+  const outputPath = join(dirname(options.report), "report.html");
+  await writeFile(outputPath, html);
+
+  console.log(`Page générée : ${outputPath}`);
 }
