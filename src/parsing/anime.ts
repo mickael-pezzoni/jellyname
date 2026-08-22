@@ -64,12 +64,25 @@ function stripTrailingSeasonFromTitle(title: string): { title: string; season: n
   return { title: title.slice(0, match.index).trim(), season };
 }
 
+// Some release patterns ("S2.25.FIN(50)") aren't recognized by anitomy as a season/episode
+// marker at all — it leaves "S2 25 FIN" stuck on the title and, worse, picks up the parenthesized
+// absolute episode number (50) as episode_number instead of the real in-season one (25). This
+// pattern is specific and reliable enough to just extract season+episode straight from the title
+// text and override whatever anitomy came up with.
+const SEASON_EPISODE_IN_TITLE = /\s+s(\d{1,3})[.\s]+(\d{1,3})\b.*$/i;
+
+function extractSeasonEpisodeFromTitle(title: string): { title: string; season: number; episode: number } | null {
+  const match = title.match(SEASON_EPISODE_IN_TITLE);
+  if (!match) return null;
+  return { title: title.slice(0, match.index).trim(), season: Number(match[1]), episode: Number(match[2]) };
+}
+
 export async function parseAnimeEpisodeFilename(fileName: string): Promise<ParsedEpisode | null> {
   await ensureWasmInitialized();
   const result = await anitomyParse(fileName);
   const single = Array.isArray(result) ? result[0] : result;
 
-  if (!single?.anime_title || !single.episode_number) return null;
+  if (!single?.anime_title) return null;
 
   // A bare "bits"/"bit" episode_title means the real digit went to episode_number instead
   // (e.g. "... 21 - FHD 8 bits" gets parsed as episode 8, not 21). The episode number can't be
@@ -78,16 +91,31 @@ export async function parseAnimeEpisodeFilename(fileName: string): Promise<Parse
     return null;
   }
 
-  const episode = Number(single.episode_number);
-  if (!Number.isFinite(episode)) return null;
+  const titleMatch = extractSeasonEpisodeFromTitle(single.anime_title);
 
-  const { title, season: titleSeason } = stripTrailingSeasonFromTitle(single.anime_title);
+  let title: string;
+  let season: number;
+  let episode: number;
+
+  if (titleMatch) {
+    title = titleMatch.title;
+    season = titleMatch.season;
+    episode = titleMatch.episode;
+  } else {
+    if (!single.episode_number) return null;
+    episode = Number(single.episode_number);
+    if (!Number.isFinite(episode)) return null;
+
+    const stripped = stripTrailingSeasonFromTitle(single.anime_title);
+    title = stripped.title;
+    season = single.anime_season ? Number(single.anime_season) : (stripped.season ?? 1);
+  }
 
   return {
     kind: "episode",
     title,
     year: single.anime_year ? Number(single.anime_year) : null,
-    season: single.anime_season ? Number(single.anime_season) : (titleSeason ?? 1),
+    season,
     episode,
     episodeTitle: cleanEpisodeTitle(single.episode_title),
   };
