@@ -4,6 +4,7 @@ import type { MediaType } from "../report/types.ts";
 import type { AmbiguousItem, EpisodeItem, MovieItem, SeasonItem, ShowItem, UnmatchedItem } from "../report/types.ts";
 import { walkVideoFiles } from "../fs/walk.ts";
 import { parseFile } from "../parsing/index.ts";
+import type { ParsedFile } from "../parsing/index.ts";
 import { searchMovie, searchTv } from "../tmdb/client.ts";
 import type { Candidate } from "../tmdb/types.ts";
 import { matchTitle } from "../tmdb/match.ts";
@@ -22,6 +23,18 @@ function extractSeasonFromFolderName(folderName: string): number | null {
   const match =
     folderName.match(/(?:saison|season)[\s._-]*0*(\d{1,3})\b/i) ?? folderName.match(/\bs0*(\d{1,3})\b/i);
   return match ? Number(match[1]) : null;
+}
+
+// Some filenames carry no title at all — just "S01E04.mkv" — relying entirely on the folder
+// structure ("Show/Saison N/S01E04.mkv") for identification. Detect that case and fall back to
+// the grandparent folder name (the one above the season folder) as the title.
+function looksLikeBareEpisodeCode(title: string): boolean {
+  return /^s\d{1,3}e\d{1,4}$/i.test(title.trim());
+}
+
+function extractSeasonEpisodeFromFileName(fileName: string): { season: number; episode: number } | null {
+  const match = fileName.match(/s(\d{1,3})e(\d{1,4})/i);
+  return match ? { season: Number(match[1]), episode: Number(match[2]) } : null;
 }
 
 export interface ScanOptions {
@@ -97,7 +110,30 @@ export async function runScan(argv: string[]): Promise<void> {
     const label = relative(options.dir, oldPath);
     process.stdout.write(`[${i + 1}/${files.length}] ${label} ... `);
 
-    const parsed = await parseFile(basename(oldPath), options.type);
+    let parsed: ParsedFile | null = await parseFile(basename(oldPath), options.type);
+
+    if (options.type !== "movie") {
+      const bareCode = parsed?.kind === "episode" && looksLikeBareEpisodeCode(parsed.title);
+      if (!parsed || bareCode) {
+        const title = basename(dirname(dirname(oldPath)));
+        const seasonEpisode =
+          parsed?.kind === "episode"
+            ? { season: parsed.season, episode: parsed.episode }
+            : extractSeasonEpisodeFromFileName(basename(oldPath));
+
+        if (title && seasonEpisode) {
+          parsed = {
+            kind: "episode",
+            title,
+            year: null,
+            season: seasonEpisode.season,
+            episode: seasonEpisode.episode,
+            episodeTitle: null,
+          };
+        }
+      }
+    }
+
     if (!parsed) {
       console.log("✗ non parsable");
       unmatched.push({ oldPath, reason: "impossible d'extraire le titre/l'épisode du nom de fichier" });
