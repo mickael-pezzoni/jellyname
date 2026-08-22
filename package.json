@@ -1,0 +1,22 @@
+{
+  "name": "jellyname",
+  "version": "0.1.0",
+  "description": "CLI de renommage de médias (films/séries/anime) selon la convention Jellyfin, via TMDB",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "jellyname": "./src/index.ts"
+  },
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "build": "bun build ./src/index.ts --compile --outfile jellyname",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "anitomyscript": "^2.0.4",
+    "parse-torrent-title": "^3.0.1"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}
