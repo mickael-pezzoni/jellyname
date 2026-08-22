@@ -152,6 +152,27 @@ function dedupeByTmdbId<T extends { tmdbId: number }>(candidates: T[]): T[] {
   });
 }
 
+// Same idea as groupAmbiguousItems: several unmatched episodes of the same show typically share
+// an identical parsedTitle (set whenever the failure was "zero TMDB results", as opposed to a
+// total parse failure). Group them so one search + one pick applies to the whole show instead of
+// asking again for every episode. Items with no parsedTitle at all can't be grouped — each stays
+// its own group of one.
+function groupUnmatchedItems(items: UnmatchedItem[], type: MediaType): UnmatchedItem[][] {
+  if (type === "movie") {
+    return items.map((item) => [item]);
+  }
+
+  const groups = new Map<string, UnmatchedItem[]>();
+  let ungroupedIndex = 0;
+  for (const item of items) {
+    const key = item.parsedTitle ?? `__ungrouped_${ungroupedIndex++}__`;
+    const group = groups.get(key) ?? [];
+    group.push(item);
+    groups.set(key, group);
+  }
+  return [...groups.values()];
+}
+
 // Unlike ambiguous items (which already have TMDB candidates to choose from), an unmatched item
 // got zero results from its parsed title — so resolving one means letting the user type a
 // corrected search query themselves, re-running the TMDB search against it, and picking from
@@ -165,50 +186,53 @@ async function resolveUnmatchedItems(
   libraryRoot: string,
   ask: AskFn,
 ): Promise<{ remaining: UnmatchedItem[]; resolvedCount: number }> {
+  const groups = groupUnmatchedItems(items, type);
   const remaining: UnmatchedItem[] = [];
   let resolvedCount = 0;
 
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i]!;
-    const rest = items.slice(i + 1);
+  for (let i = 0; i < groups.length; i++) {
+    const group = groups[i]!;
+    const first = group[0]!;
+    const rest = groups.slice(i + 1).flat();
 
-    console.log(`\n[${i + 1}/${items.length}] ${basename(item.oldPath)}`);
-    console.log(`  raison : ${item.reason}${item.parsedTitle ? ` — titre détecté : "${item.parsedTitle}"` : ""}`);
+    console.log(`\n[${i + 1}/${groups.length}] ${basename(first.oldPath)}`);
+    console.log(`  raison : ${first.reason}${first.parsedTitle ? ` — titre détecté : "${first.parsedTitle}"` : ""}`);
+    if (group.length > 1) console.log(`  ${group.length} épisodes concernés`);
 
     let query = await ask('  Nouvelle recherche (titre, "s" pour passer, "q" pour quitter) : ');
 
     if (query === "q") {
-      remaining.push(item, ...rest);
+      remaining.push(...group, ...rest);
       return { remaining, resolvedCount };
     }
     if (query === "s" || query === "") {
-      remaining.push(item);
+      remaining.push(...group);
       continue;
     }
 
     let candidates = dedupeByTmdbId(
       await (type === "movie"
-        ? searchMovie(query, item.parsedYear, DEFAULT_LANGUAGES)
-        : searchTv(query, item.parsedYear, DEFAULT_LANGUAGES)),
+        ? searchMovie(query, first.parsedYear, DEFAULT_LANGUAGES)
+        : searchTv(query, first.parsedYear, DEFAULT_LANGUAGES)),
     );
 
     while (candidates.length === 0) {
       console.log("  Aucun résultat.");
       query = await ask('  Nouvelle recherche (ou "s" pour passer, "q" pour quitter) : ');
       if (query === "q") {
-        remaining.push(item, ...rest);
+        remaining.push(...group, ...rest);
         return { remaining, resolvedCount };
       }
       if (query === "s" || query === "") break;
       candidates = dedupeByTmdbId(
         await (type === "movie"
-          ? searchMovie(query, item.parsedYear, DEFAULT_LANGUAGES)
-          : searchTv(query, item.parsedYear, DEFAULT_LANGUAGES)),
+          ? searchMovie(query, first.parsedYear, DEFAULT_LANGUAGES)
+          : searchTv(query, first.parsedYear, DEFAULT_LANGUAGES)),
       );
     }
 
     if (candidates.length === 0) {
-      remaining.push(item);
+      remaining.push(...group);
       continue;
     }
 
@@ -219,45 +243,47 @@ async function resolveUnmatchedItems(
     const choice = await ask('  Choix (numéro, "s" pour passer, "q" pour quitter) : ');
 
     if (choice === "q") {
-      remaining.push(item, ...rest);
+      remaining.push(...group, ...rest);
       return { remaining, resolvedCount };
     }
     if (choice === "s" || choice === "") {
-      remaining.push(item);
+      remaining.push(...group);
       continue;
     }
 
     const picked = candidates[Number(choice) - 1];
     if (!picked) {
-      console.log("  Choix invalide, item laissé de côté.");
-      remaining.push(item);
+      console.log("  Choix invalide, groupe laissé de côté.");
+      remaining.push(...group);
       continue;
     }
 
-    let season = item.season;
-    let episode = item.episode;
+    for (const item of group) {
+      let season = item.season;
+      let episode = item.episode;
 
-    if (type !== "movie" && (season === undefined || episode === undefined)) {
-      const manual = await ask('  Saison et épisode (ex: 1x05), "s" pour passer : ');
-      const match = manual.match(/^(\d+)x(\d+)$/i);
-      if (!match) {
-        console.log("  Format invalide, item laissé de côté.");
-        remaining.push(item);
-        continue;
+      if (type !== "movie" && (season === undefined || episode === undefined)) {
+        const manual = await ask(`  Saison et épisode pour ${basename(item.oldPath)} (ex: 1x05), "s" pour passer : `);
+        const match = manual.match(/^(\d+)x(\d+)$/i);
+        if (!match) {
+          console.log("  Format invalide, item laissé de côté.");
+          remaining.push(item);
+          continue;
+        }
+        season = Number(match[1]);
+        episode = Number(match[2]);
       }
-      season = Number(match[1]);
-      episode = Number(match[2]);
-    }
 
-    applyResolution(
-      parts,
-      dir,
-      type,
-      { oldPath: item.oldPath, season, episode, episodeTitle: item.episodeTitle },
-      { tmdbId: picked.tmdbId, title: picked.title, year: picked.year ?? 0 },
-      libraryRoot,
-    );
-    resolvedCount++;
+      applyResolution(
+        parts,
+        dir,
+        type,
+        { oldPath: item.oldPath, season, episode, episodeTitle: item.episodeTitle },
+        { tmdbId: picked.tmdbId, title: picked.title, year: picked.year ?? 0 },
+        libraryRoot,
+      );
+      resolvedCount++;
+    }
   }
 
   return { remaining, resolvedCount };
