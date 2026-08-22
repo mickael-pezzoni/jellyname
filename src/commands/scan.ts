@@ -5,14 +5,12 @@ import type { AmbiguousItem, EpisodeItem, MovieItem, SeasonItem, ShowItem, Unmat
 import { walkVideoFiles } from "../fs/walk.ts";
 import { parseFile } from "../parsing/index.ts";
 import type { ParsedFile } from "../parsing/index.ts";
-import { searchMovie, searchTv } from "../tmdb/client.ts";
+import { DEFAULT_LANGUAGES, searchMovie, searchTv } from "../tmdb/client.ts";
 import type { Candidate } from "../tmdb/types.ts";
 import { matchTitle } from "../tmdb/match.ts";
 import { episodeFileName, movieTargetPath, seasonTargetDir, showRoot } from "../report/naming.ts";
 import { writeReport } from "../report/writer.ts";
 import { renderReport } from "./render.ts";
-
-const TMDB_LANGUAGES = ["fr-FR", "en-US"];
 
 // The season is sometimes only encoded in the containing folder ("Saison 3/", "Season 03/",
 // "Show Name S02/"), not in the episode filename itself — this is common enough in this
@@ -160,14 +158,22 @@ export async function runScan(argv: string[]): Promise<void> {
 
     const candidates =
       options.type === "movie"
-        ? await searchMovie(parsed.title, parsed.year, TMDB_LANGUAGES)
-        : await searchTv(parsed.title, parsed.year, TMDB_LANGUAGES);
+        ? await searchMovie(parsed.title, parsed.year, DEFAULT_LANGUAGES)
+        : await searchTv(parsed.title, parsed.year, DEFAULT_LANGUAGES);
 
     const result = matchTitle(parsed.title, parsed.year, candidates);
 
     if (result.kind === "unmatched") {
       console.log("✗ aucun match TMDB");
-      unmatched.push({ oldPath, reason: "aucun résultat TMDB" });
+      unmatched.push({
+        oldPath,
+        reason: "aucun résultat TMDB",
+        parsedTitle: parsed.title,
+        parsedYear: parsed.year,
+        ...(parsed.kind === "episode"
+          ? { season: parsed.season, episode: parsed.episode, episodeTitle: parsed.episodeTitle ?? "" }
+          : {}),
+      });
       continue;
     }
 

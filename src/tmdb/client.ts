@@ -3,6 +3,8 @@ import type { Candidate, TmdbMovieResult, TmdbSearchResponse, TmdbTvResult } fro
 const BASE_URL = "https://api.themoviedb.org/3";
 const MIN_INTERVAL_MS = 40;
 
+export const DEFAULT_LANGUAGES = ["fr-FR", "en-US"];
+
 let lastRequestAt = 0;
 
 function getApiKey(): string {

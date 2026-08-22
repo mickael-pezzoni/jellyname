@@ -71,4 +71,9 @@ export interface AmbiguousItem {
 export interface UnmatchedItem {
   oldPath: string;
   reason: string;
+  parsedTitle?: string;
+  parsedYear?: number | null;
+  season?: number;
+  episode?: number;
+  episodeTitle?: string;
 }
