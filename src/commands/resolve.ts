@@ -155,17 +155,18 @@ function dedupeByTmdbId<T extends { tmdbId: number }>(candidates: T[]): T[] {
 // Same idea as groupAmbiguousItems: several unmatched episodes of the same show typically share
 // an identical parsedTitle (set whenever the failure was "zero TMDB results", as opposed to a
 // total parse failure). Group them so one search + one pick applies to the whole show instead of
-// asking again for every episode. Items with no parsedTitle at all can't be grouped — each stays
-// its own group of one.
+// asking again for every episode. Items with no parsedTitle at all (a total parse failure) fall
+// back to grouping by parent folder instead — those episodes still almost always live together
+// (e.g. a whole season's worth of "Show - NN - FHD 8 bits" files that couldn't be parsed at all),
+// and without this they'd never group since each would otherwise get its own unique key.
 function groupUnmatchedItems(items: UnmatchedItem[], type: MediaType): UnmatchedItem[][] {
   if (type === "movie") {
     return items.map((item) => [item]);
   }
 
   const groups = new Map<string, UnmatchedItem[]>();
-  let ungroupedIndex = 0;
   for (const item of items) {
-    const key = item.parsedTitle ?? `__ungrouped_${ungroupedIndex++}__`;
+    const key = item.parsedTitle ?? `__folder__${dirname(item.oldPath)}`;
     const group = groups.get(key) ?? [];
     group.push(item);
     groups.set(key, group);
