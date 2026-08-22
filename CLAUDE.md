@@ -25,7 +25,7 @@ The CLI needs `TMDB_API_KEY` set (copy `.env.example` to `.env`).
 ### Subcommands
 
 ```bash
-jellyname scan --dir <path> --type <movie|tv|anime> --out <path>
+jellyname scan --dir <path> --type <movie|tv|anime> --out <path> [--dest <path>]
 jellyname resolve --report <manifest.json>
 jellyname apply --report <manifest.json> [--yes] [--retry-failed]
 jellyname render --report <manifest.json>
@@ -36,7 +36,7 @@ jellyname render --report <manifest.json>
 The tool is deliberately split into four **independent** steps that communicate only through a JSON report on disk — there is no single "scan and apply in one run" path, and this must not be reintroduced:
 
 1. **`scan`** — walks a folder, parses filenames, queries TMDB, writes a report. Never touches media files.
-2. **`resolve`** — interactively resolves TMDB matches whose confidence score fell below threshold (`ambiguous[]` in the manifest), by writing a `resolvedTmdbId` onto the item.
+2. **`resolve`** — interactively walks `manifest.ambiguous[]` (TMDB matches whose confidence score fell below threshold), lets the user pick a candidate per item, and directly builds the resulting `MovieItem`/`EpisodeItem` into the parts (merging into an existing show/season across parts if one already matches by `tmdbId`, rather than duplicating it), removing the item from `ambiguous[]`.
 3. **`render`** — reads the report and (re)generates an HTML viewer. Called on demand, never automatically from `apply`.
 4. **`apply`** — reads the report, asks for one global yes/no confirmation (unless `--yes`), then moves/renames files.
 
@@ -51,7 +51,9 @@ The tool is deliberately split into four **independent** steps that communicate 
 
 **`--type movie|tv|anime`** picks both the TMDB endpoint (`movie` vs `tv`; anime is structurally `tv`) and the filename parser: `parse-torrent-title` for `movie`/`tv`, `anitomyscript` for `anime` (its release-naming conventions — absolute episode numbers, fansub group tags — don't parse well with the generic parser). One scan == one folder == one homogeneous type; there is no auto-detection of content type.
 
-**Matching confidence**: TMDB search results are scored (title similarity + year match + popularity as a tiebreaker) against a configurable threshold. Above threshold → auto-accepted; below → the item goes to `ambiguous[]` for `resolve` to handle. Treat this threshold as a knob expected to need tuning once real data is available, not a fixed constant.
+**Matching confidence**: TMDB is searched in multiple languages (`fr-FR` and `en-US`, hardcoded in `commands/scan.ts`) rather than a single one — the same title/show can come back once per language with a different localized name, and `scoreCandidates` (`tmdb/match.ts`) dedupes by `tmdbId`, keeping whichever language's title scores highest against the parsed filename. This matters because a French-named file and an English-named file for the same movie need different reference titles to score well; don't collapse this back to a single search language. Score = title similarity (normalized Levenshtein) blended with a year-match bonus, compared against a confidence threshold (currently `0.7`, in `tmdb/match.ts`). Above threshold → auto-accepted; below → the item goes to `ambiguous[]` for `resolve` to handle. Treat this threshold as a knob expected to need tuning as more real data comes in, not a fixed constant. Separately, `tmdb/client.ts` retries a search once with a lone mid-title number stripped (e.g. "Harry Potter 5 et...") when TMDB returns zero results — some parsed titles retain a franchise entry number that breaks TMDB's search outright.
+
+`manifest.libraryRoot` (set from `scan`'s `--dest`, defaulting to `--dir`) is the root new paths are computed under — `resolve` needs it to build `newPath` for items that had none at scan time.
 
 ### Directory layout
 
@@ -60,10 +62,15 @@ src/
   index.ts        # argv[2] dispatch to the four subcommands, nothing else
   commands/       # one file per subcommand; each owns its own arg parsing (node:util parseArgs)
   report/types.ts  # the on-disk report schema — the shared contract between all four subcommands
-  parsing/        # (not yet implemented) filename → {title, year, season, episode}
-  tmdb/           # (not yet implemented) API client + confidence scoring
-  html/           # (not yet implemented) report.html generation
-  fs/             # (not yet implemented) move/rename with collision + cross-device handling
+  report/naming.ts # Jellyfin path builders (movieTargetPath, showRoot, seasonTargetDir, episodeFileName)
+  report/writer.ts # scan's report writer — owns the part-splitting rule
+  report/reader.ts # aggregates manifest + all parts for render (movies/shows collapsed into flat arrays)
+  parsing/        # filename → {title, year, season, episode}; anime.ts hides globalThis.fetch during
+                  # anitomyscript's one-time WASM init (its emscripten loader misdetects Bun's native
+                  # fetch and tries to fetch() the wasm file by a relative path otherwise)
+  tmdb/           # API client (multi-language search + throttling) + confidence scoring
+  html/           # report.html generation (self-contained, data embedded inline — no fetch)
+  fs/walk.ts      # recursive video file listing
 ```
 
-`commands/*.ts` currently validate their args and then throw `"<command>: pas encore implémenté"` — the business logic in `parsing/`, `tmdb/`, `html/`, `fs/` has not been written yet.
+All four commands are implemented; `apply` is the only one with real filesystem side effects.

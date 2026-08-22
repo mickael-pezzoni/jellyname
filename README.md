@@ -31,6 +31,7 @@ jellyname scan --dir /media/tv --type tv --out ./report
 
 # 2. Manually resolve ambiguous TMDB matches (confidence score below threshold)
 jellyname resolve --report ./report/manifest.json
+# walks through ambiguous items one by one: pick a candidate number, "s" to skip, "q" to quit
 
 # 3. Generate an HTML page to browse the report in a web browser
 jellyname render --report ./report/manifest.json
@@ -48,7 +49,7 @@ jellyname apply --report ./report/manifest.json
 | `apply` | `--yes` | Skip the interactive confirmation (scripted usage) |
 | `apply` | `--retry-failed` | Retry items marked `failed` in a previous run |
 
-`apply` updates each item's status (`pending`/`done`/`failed`) in the report as it goes, so an interrupted run can be resumed without starting over.
+`apply` updates each item's status (`pending`/`done`/`failed`) in the report as it goes, so an interrupted run can be resumed without starting over. It also reports how many ambiguous items are still pending `resolve`, if any.
 
 ## Report structure
 
@@ -87,4 +88,4 @@ Produces a standalone executable that doesn't require Bun to be installed on the
 
 ## Status
 
-Work in progress. The CLI structure and report schema are in place; scan/matching/apply logic is still to be implemented.
+All four commands (`scan`, `resolve`, `render`, `apply`) are implemented and working end-to-end against the real TMDB API.
