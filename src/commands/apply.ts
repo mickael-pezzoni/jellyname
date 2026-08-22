@@ -91,7 +91,12 @@ interface ValidationResult {
 // Missing paths mean the report itself is corrupted — refuse to touch anything. A duplicate
 // newPath is different: the report is otherwise fine, it's just that two items would land on
 // the same file. Aborting the whole run over one collision is too harsh, so those items are
-// marked failed and skipped instead, letting everything else proceed.
+// marked failed and skipped instead, letting everything else proceed. Items already "done" are
+// excluded from this grouping entirely — that path is legitimately taken by a prior successful
+// move, not a same-report collision, and must never be flipped back to failed here. A pending
+// item that happens to share a path with a done item isn't flagged as a duplicate either; it
+// falls through to the normal move attempt, where moveFile reports the accurate, specific reason
+// ("un fichier existe déjà à la destination") instead of the more generic duplicate message.
 function validate(parts: LoadedPart[]): ValidationResult {
   const errors: string[] = [];
   const byNewPath = new Map<string, QueuedItem[]>();
@@ -103,6 +108,7 @@ function validate(parts: LoadedPart[]): ValidationResult {
         errors.push(`item invalide (chemin manquant) dans ${loadedPart.fileName}: ${label}`);
         continue;
       }
+      if (item.status === "done") continue;
       const group = byNewPath.get(item.newPath) ?? [];
       group.push(entry);
       byNewPath.set(item.newPath, group);
