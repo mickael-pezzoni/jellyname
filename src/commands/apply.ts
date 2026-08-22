@@ -1,8 +1,9 @@
 import { parseArgs } from "node:util";
-import { copyFile, mkdir, readFile, readdir, rename, rmdir, unlink, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rename, rm, unlink, writeFile } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
 import { dirname, join } from "node:path";
 import type { EpisodeItem, ItemStatus, Manifest, MovieItem, Part } from "../report/types.ts";
+import { walkVideoFiles } from "../fs/walk.ts";
 
 export interface ApplyOptions {
   report: string;
@@ -130,18 +131,20 @@ async function askConfirmation(question: string): Promise<boolean> {
   return ["y", "yes", "o", "oui"].includes(answer.trim().toLowerCase());
 }
 
-// Only ever removes a directory that's completely empty after the move — never anything with
-// leftover content (e.g. unmatched files like OAVs). Single level only (the immediate parent),
-// not cascaded further up: apply has no notion of the original scan root to safely bound a
-// recursive cleanup against, so a now-empty grandparent is left for the user to remove by hand.
-async function removeIfEmpty(dir: string): Promise<void> {
+// A source directory is only ever worth keeping around for the video files it might still hold
+// (e.g. an unmatched OAV) — leftover posters, .nfo, or other non-video sidecar files aren't. Once
+// the last video is out, remove the directory and whatever non-video junk remains in it. Single
+// level only (the immediate parent), not cascaded further up: apply has no notion of the original
+// scan root to safely bound a recursive cleanup against, so a now-empty grandparent is left for
+// the user to remove by hand.
+async function removeIfNoVideoFiles(dir: string): Promise<void> {
   try {
-    const entries = await readdir(dir);
-    if (entries.length === 0) {
-      await rmdir(dir);
+    const videoFiles = await walkVideoFiles(dir);
+    if (videoFiles.length === 0) {
+      await rm(dir, { recursive: true, force: true });
     }
   } catch {
-    // Directory already gone, inaccessible, or a race made it non-empty — not fatal either way.
+    // Directory already gone, inaccessible, or a race added a video back — not fatal either way.
   }
 }
 
@@ -167,7 +170,7 @@ async function moveFile(oldPath: string, newPath: string): Promise<{ ok: true } 
     }
   }
 
-  await removeIfEmpty(dirname(oldPath));
+  await removeIfNoVideoFiles(dirname(oldPath));
 
   return { ok: true };
 }
