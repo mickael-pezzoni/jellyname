@@ -1,5 +1,5 @@
 import { parseArgs } from "node:util";
-import { copyFile, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, readdir, rename, rmdir, unlink, writeFile } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
 import { dirname, join } from "node:path";
 import type { EpisodeItem, ItemStatus, Manifest, MovieItem, Part } from "../report/types.ts";
@@ -130,6 +130,21 @@ async function askConfirmation(question: string): Promise<boolean> {
   return ["y", "yes", "o", "oui"].includes(answer.trim().toLowerCase());
 }
 
+// Only ever removes a directory that's completely empty after the move — never anything with
+// leftover content (e.g. unmatched files like OAVs). Single level only (the immediate parent),
+// not cascaded further up: apply has no notion of the original scan root to safely bound a
+// recursive cleanup against, so a now-empty grandparent is left for the user to remove by hand.
+async function removeIfEmpty(dir: string): Promise<void> {
+  try {
+    const entries = await readdir(dir);
+    if (entries.length === 0) {
+      await rmdir(dir);
+    }
+  } catch {
+    // Directory already gone, inaccessible, or a race made it non-empty — not fatal either way.
+  }
+}
+
 async function moveFile(oldPath: string, newPath: string): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!(await Bun.file(oldPath).exists())) {
     return { ok: false, error: "fichier source introuvable" };
@@ -151,6 +166,8 @@ async function moveFile(oldPath: string, newPath: string): Promise<{ ok: true } 
       return { ok: false, error: (err as Error).message };
     }
   }
+
+  await removeIfEmpty(dirname(oldPath));
 
   return { ok: true };
 }
