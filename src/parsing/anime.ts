@@ -37,9 +37,18 @@ const NON_TITLE_TAGS = new Set([
   "truefrench",
 ]);
 
+// Matches a bit-depth tag once the leading digit is still attached (e.g. "8bits", "10bit") —
+// safe to drop, the episode number itself is unaffected.
+const BIT_DEPTH_TAG = /^\d{1,2}\s*bits?$/i;
+// Matches a bare "bits"/"bit" with the digit missing — a sign anitomy split "8 bits" across
+// episode_number/episode_title and mistook the "8" for the episode number itself.
+const DANGLING_BIT_DEPTH = /^bits?$/i;
+
 function cleanEpisodeTitle(rawTitle: string | undefined): string | null {
   if (!rawTitle) return null;
-  return NON_TITLE_TAGS.has(rawTitle.trim().toLowerCase()) ? null : rawTitle;
+  const normalized = rawTitle.trim().toLowerCase();
+  if (NON_TITLE_TAGS.has(normalized) || BIT_DEPTH_TAG.test(normalized)) return null;
+  return rawTitle;
 }
 
 export async function parseAnimeEpisodeFilename(fileName: string): Promise<ParsedEpisode | null> {
@@ -48,6 +57,13 @@ export async function parseAnimeEpisodeFilename(fileName: string): Promise<Parse
   const single = Array.isArray(result) ? result[0] : result;
 
   if (!single?.anime_title || !single.episode_number) return null;
+
+  // A bare "bits"/"bit" episode_title means the real digit went to episode_number instead
+  // (e.g. "... 21 - FHD 8 bits" gets parsed as episode 8, not 21). The episode number can't be
+  // trusted here — better to leave the file unparsed than silently rename it into the wrong slot.
+  if (single.episode_title && DANGLING_BIT_DEPTH.test(single.episode_title.trim())) {
+    return null;
+  }
 
   const episode = Number(single.episode_number);
   if (!Number.isFinite(episode)) return null;
