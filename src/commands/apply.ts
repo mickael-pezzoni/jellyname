@@ -138,7 +138,7 @@ async function moveFile(oldPath: string, newPath: string): Promise<{ ok: true } 
 export async function runApply(argv: string[]): Promise<void> {
   const options = parseApplyArgs(argv);
 
-  const { parts } = await loadManifestAndParts(options.report);
+  const { manifest, parts } = await loadManifestAndParts(options.report);
 
   const validationErrors = validate(parts);
   if (validationErrors.length > 0) {
@@ -157,6 +157,7 @@ export async function runApply(argv: string[]): Promise<void> {
 
   if (toProcess.length === 0) {
     console.log("Rien à appliquer (tout est déjà fait, ou en échec sans --retry-failed).");
+    notifyAmbiguous(manifest.ambiguous.length, options.report);
     return;
   }
 
@@ -201,4 +202,12 @@ export async function runApply(argv: string[]): Promise<void> {
   }
 
   console.log(`\nTerminé : ${done} réussi(s), ${failed} échoué(s).`);
+  notifyAmbiguous(manifest.ambiguous.length, options.report);
+}
+
+function notifyAmbiguous(count: number, reportPath: string): void {
+  if (count === 0) return;
+  console.log(
+    `\n${count} fichier(s) ambigu(s) n'ont pas été traités. Lance "jellyname resolve --report ${reportPath}" pour les trancher.`,
+  );
 }
