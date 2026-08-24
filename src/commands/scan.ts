@@ -233,6 +233,7 @@ export async function runScan(argv: string[]): Promise<void> {
   const manifestPath = await writeReport(options.out, {
     type: options.type,
     libraryRoot: options.dest,
+    sourceRoot: options.dir,
     movies,
     shows,
     ambiguous,

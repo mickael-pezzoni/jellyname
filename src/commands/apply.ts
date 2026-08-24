@@ -1,7 +1,7 @@
 import { parseArgs } from "node:util";
 import { copyFile, mkdir, readFile, rename, rm, unlink, writeFile } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import type { EpisodeItem, ItemStatus, Manifest, MovieItem, Part } from "../report/types.ts";
 import { walkVideoFiles } from "../fs/walk.ts";
 
@@ -134,10 +134,23 @@ async function askConfirmation(question: string): Promise<boolean> {
 // A source directory is only ever worth keeping around for the video files it might still hold
 // (e.g. an unmatched OAV) — leftover posters, .nfo, or other non-video sidecar files aren't. Once
 // the last video is out, remove the directory and whatever non-video junk remains in it. Single
-// level only (the immediate parent), not cascaded further up: apply has no notion of the original
-// scan root to safely bound a recursive cleanup against, so a now-empty grandparent is left for
-// the user to remove by hand.
-async function removeIfNoVideoFiles(dir: string): Promise<void> {
+// level only (the immediate parent), not cascaded further up.
+//
+// The scan root itself (manifest.sourceRoot) is never removed this way, even if it ends up
+// holding no video files — that happens whenever a file sat directly at the root of --dir (no
+// subfolder), since dirname(oldPath) is then the root itself. Without this guard, moving the
+// last root-level file out (e.g. to a separate --dest) deletes the entire directory the user
+// pointed --dir at, along with anything unrelated to jellyname that happened to be in it.
+// Verified this destroys the directory before adding the guard — this is not a hypothetical.
+//
+// sourceRoot is missing on reports generated before this field existed; with no way to know
+// where the scan root was, cleanup is skipped entirely for those rather than risk the same
+// destruction — never proceed on the assumption that a directory isn't the root.
+async function removeIfNoVideoFiles(dir: string, sourceRoot: string | undefined): Promise<void> {
+  if (sourceRoot === undefined || resolve(dir) === resolve(sourceRoot)) {
+    return;
+  }
+
   try {
     const videoFiles = await walkVideoFiles(dir);
     if (videoFiles.length === 0) {
@@ -148,7 +161,11 @@ async function removeIfNoVideoFiles(dir: string): Promise<void> {
   }
 }
 
-async function moveFile(oldPath: string, newPath: string): Promise<{ ok: true } | { ok: false; error: string }> {
+async function moveFile(
+  oldPath: string,
+  newPath: string,
+  sourceRoot: string | undefined,
+): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!(await Bun.file(oldPath).exists())) {
     return { ok: false, error: "fichier source introuvable" };
   }
@@ -170,7 +187,7 @@ async function moveFile(oldPath: string, newPath: string): Promise<{ ok: true } 
     }
   }
 
-  await removeIfNoVideoFiles(dirname(oldPath));
+  await removeIfNoVideoFiles(dirname(oldPath), sourceRoot);
 
   return { ok: true };
 }
@@ -245,7 +262,7 @@ export async function runApply(argv: string[]): Promise<void> {
     const { item, label, partFileName } = toProcess[i]!;
     process.stdout.write(`[${i + 1}/${toProcess.length}] ${label} ... `);
 
-    const result = await moveFile(item.oldPath, item.newPath);
+    const result = await moveFile(item.oldPath, item.newPath, manifest.sourceRoot);
 
     if (result.ok) {
       item.status = "done";

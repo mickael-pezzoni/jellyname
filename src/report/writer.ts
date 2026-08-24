@@ -15,6 +15,7 @@ const MAX_PART_BYTES = 5 * 1024 * 1024;
 export interface ReportData {
   type: MediaType;
   libraryRoot: string;
+  sourceRoot: string;
   movies: MovieItem[];
   shows: ShowItem[];
   ambiguous: AmbiguousItem[];
@@ -64,6 +65,7 @@ export async function writeReport(outDir: string, data: ReportData): Promise<str
     type: data.type,
     generatedAt: new Date().toISOString(),
     libraryRoot: data.libraryRoot,
+    sourceRoot: data.sourceRoot,
     parts: partNames,
     ambiguous: data.ambiguous,
     unmatched: data.unmatched,

@@ -6,6 +6,7 @@ export interface Manifest {
   type: MediaType;
   generatedAt: string;
   libraryRoot: string;
+  sourceRoot: string;
   parts: string[];
   ambiguous: AmbiguousItem[];
   unmatched: UnmatchedItem[];
