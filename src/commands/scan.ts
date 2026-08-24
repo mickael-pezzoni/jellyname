@@ -7,7 +7,7 @@ import { parseFile } from "../parsing/index.ts";
 import type { ParsedFile } from "../parsing/index.ts";
 import { DEFAULT_LANGUAGES, searchMovie, searchTv } from "../tmdb/client.ts";
 import type { Candidate } from "../tmdb/types.ts";
-import { matchTitle } from "../tmdb/match.ts";
+import { matchTitle, scoreCandidates } from "../tmdb/match.ts";
 import { episodeFileName, movieTargetPath, seasonTargetDir, showRoot } from "../report/naming.ts";
 import { writeReport } from "../report/writer.ts";
 import { renderReport } from "./render.ts";
@@ -161,7 +161,31 @@ export async function runScan(argv: string[]): Promise<void> {
         ? await searchMovie(parsed.title, parsed.year, DEFAULT_LANGUAGES)
         : await searchTv(parsed.title, parsed.year, DEFAULT_LANGUAGES);
 
-    const result = matchTitle(parsed.title, parsed.year, candidates);
+    let result = matchTitle(parsed.title, parsed.year, candidates);
+
+    // When the filename never names the show at all — just release-pack text like "Saison 2
+    // L'Intégrale" — the parsed title is junk and TMDB predictably finds nothing for it. Retry
+    // once against the grandparent folder name, where the real show name lives in this library's
+    // layout (same fallback source as the bare-episode-code case above, just triggered here by
+    // search failure instead of upfront, since this title looked plausible on its own).
+    //
+    // A folder name is often just the bare franchise word ("Stargate"), which can score a
+    // deceptive near-perfect text match against an obscure/low-popularity decoy entry on TMDB
+    // while the real, popular show ("Stargate SG-1") scores lower and gets passed over — a
+    // wrong-but-confident silent match. Since this guess is inherently less trustworthy than a
+    // match derived from the file's own name, never auto-accept it: always route it to
+    // ambiguous for manual confirmation, regardless of score.
+    if (result.kind === "unmatched" && options.type !== "movie" && parsed.kind === "episode") {
+      const folderTitle = basename(dirname(dirname(oldPath)));
+      if (folderTitle && folderTitle !== parsed.title) {
+        const folderCandidates = await searchTv(folderTitle, parsed.year, DEFAULT_LANGUAGES);
+        if (folderCandidates.length > 0) {
+          const scored = scoreCandidates(folderTitle, parsed.year, folderCandidates);
+          parsed = { ...parsed, title: folderTitle };
+          result = { kind: "ambiguous", candidates: scored.slice(0, 5) };
+        }
+      }
+    }
 
     if (result.kind === "unmatched") {
       console.log("✗ aucun match TMDB");
