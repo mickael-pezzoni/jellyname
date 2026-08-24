@@ -185,10 +185,14 @@ export async function runScan(argv: string[]): Promise<void> {
     let result = matchTitle(parsed.title, parsed.year, candidates);
 
     // When the filename never names the show at all — just release-pack text like "Saison 2
-    // L'Intégrale" — the parsed title is junk and TMDB predictably finds nothing for it. Retry
-    // once against the grandparent folder name, where the real show name lives in this library's
-    // layout (same fallback source as the bare-episode-code case above, just triggered here by
-    // search failure instead of upfront, since this title looked plausible on its own).
+    // L'Intégrale", or a fragment left over from a parser misfire (parse-torrent-title mistaking
+    // "SG-1 Prodige" for encoder "1" + release group "Prodige", leaving title "SG") — the parsed
+    // title is junk. Retry once against the grandparent folder name, where the real show name
+    // lives in this library's layout (same fallback source as the bare-episode-code case above,
+    // just triggered here by search failure instead of upfront, since this title looked
+    // plausible on its own). Triggered on "ambiguous" too, not just "unmatched": a short garbled
+    // title like "SG" can still coincidentally match a handful of unrelated shows at a low score
+    // instead of returning zero results outright, and would otherwise never get the folder retry.
     //
     // A folder name is often just the bare franchise word ("Stargate"), which can score a
     // deceptive near-perfect text match against an obscure/low-popularity decoy entry on TMDB
@@ -196,7 +200,7 @@ export async function runScan(argv: string[]): Promise<void> {
     // wrong-but-confident silent match. Since this guess is inherently less trustworthy than a
     // match derived from the file's own name, never auto-accept it: always route it to
     // ambiguous for manual confirmation, regardless of score.
-    if (result.kind === "unmatched" && options.type !== "movie" && parsed.kind === "episode") {
+    if (result.kind !== "matched" && options.type !== "movie" && parsed.kind === "episode") {
       const folderTitle = folderBasedTitle(oldPath, options.dir);
       if (folderTitle && folderTitle !== parsed.title) {
         const folderCandidates = await searchTv(folderTitle, parsed.year, DEFAULT_LANGUAGES);
