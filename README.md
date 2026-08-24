@@ -64,7 +64,7 @@ report/
   report.html        # generated on demand via `render`, data embedded inline (no fetch)
 ```
 
-An existing file at the destination path is never overwritten — the corresponding item is marked `failed` instead. A duplicate `newPath` between two items doesn't abort the run either — both are marked `failed` and everything else proceeds. After a successful move, the source directory (and any leftover non-video files in it, like posters or `.nfo`) is removed once it no longer contains any video file — a directory still holding an unmatched video is left untouched.
+An existing file at the destination path is never overwritten — the corresponding item is marked `failed` instead. A duplicate `newPath` between two items doesn't abort the run either — both are marked `failed` and everything else proceeds. After a successful move, the source directory (and any leftover non-video files in it, like posters or `.nfo`) is removed once it no longer contains any video file — a directory still holding an unmatched video is left untouched, and the scan root itself (`--dir`) is never removed this way even if a file sat directly at its root.
 
 ## Project structure
 
