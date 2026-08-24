@@ -1,5 +1,5 @@
 import { parseArgs } from "node:util";
-import { basename, dirname, extname, join, relative } from "node:path";
+import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import type { MediaType } from "../report/types.ts";
 import type { AmbiguousItem, EpisodeItem, MovieItem, SeasonItem, ShowItem, UnmatchedItem } from "../report/types.ts";
 import { walkVideoFiles } from "../fs/walk.ts";
@@ -25,8 +25,8 @@ function extractSeasonFromFolderName(folderName: string): number | null {
 }
 
 // Some filenames carry no title at all — just "S01E04.mkv" — relying entirely on the folder
-// structure ("Show/Saison N/S01E04.mkv") for identification. Detect that case and fall back to
-// the grandparent folder name (the one above the season folder) as the title.
+// structure ("Show/Saison N/S01E04.mkv", or "Show/S01E04.mkv" with episodes loose directly in the
+// show's folder) for identification. Detect that case and fall back to folderBasedTitle.
 function looksLikeBareEpisodeCode(title: string): boolean {
   return /^s\d{1,3}e\d{1,4}$/i.test(title.trim());
 }
@@ -34,6 +34,27 @@ function looksLikeBareEpisodeCode(title: string): boolean {
 function extractSeasonEpisodeFromFileName(fileName: string): { season: number; episode: number } | null {
   const match = fileName.match(/s(\d{1,3})e(\d{1,4})/i);
   return match ? { season: Number(match[1]), episode: Number(match[2]) } : null;
+}
+
+// Folder-based title fallbacks need to know which level actually holds the show name, which
+// depends on whether a season subfolder exists: "Show/Saison N/file" (two levels up) vs. "Show/
+// file" with episodes sitting loose directly in the show's own folder (one level up, no season
+// subfolder at all). Decide by checking whether the immediate parent looks like a season folder;
+// if it doesn't, treat it as the show folder itself instead of blindly going up one more level.
+// Either way, never return the scan root itself as a "title" — that's the whole library's name,
+// not a show, and would be wrongly shared across every file that hits this fallback.
+function folderBasedTitle(oldPath: string, scanRoot: string): string | null {
+  const parent = dirname(oldPath);
+  if (resolve(parent) === resolve(scanRoot)) return null;
+
+  const parentName = basename(parent);
+  if (extractSeasonFromFolderName(parentName) === null) {
+    return parentName;
+  }
+
+  const grandparent = dirname(parent);
+  if (resolve(grandparent) === resolve(scanRoot)) return null;
+  return basename(grandparent);
 }
 
 export interface ScanOptions {
@@ -124,7 +145,7 @@ export async function runScan(argv: string[]): Promise<void> {
     if (options.type !== "movie") {
       const bareCode = parsed?.kind === "episode" && looksLikeBareEpisodeCode(parsed.title);
       if (!parsed || bareCode) {
-        const title = basename(dirname(dirname(oldPath)));
+        const title = folderBasedTitle(oldPath, options.dir);
         const seasonEpisode =
           parsed?.kind === "episode"
             ? { season: parsed.season, episode: parsed.episode }
@@ -176,7 +197,7 @@ export async function runScan(argv: string[]): Promise<void> {
     // match derived from the file's own name, never auto-accept it: always route it to
     // ambiguous for manual confirmation, regardless of score.
     if (result.kind === "unmatched" && options.type !== "movie" && parsed.kind === "episode") {
-      const folderTitle = basename(dirname(dirname(oldPath)));
+      const folderTitle = folderBasedTitle(oldPath, options.dir);
       if (folderTitle && folderTitle !== parsed.title) {
         const folderCandidates = await searchTv(folderTitle, parsed.year, DEFAULT_LANGUAGES);
         if (folderCandidates.length > 0) {
