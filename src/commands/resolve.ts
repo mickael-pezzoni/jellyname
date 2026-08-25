@@ -2,9 +2,10 @@ import { parseArgs } from "node:util";
 import { readFile, writeFile } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
 import { basename, dirname, extname, join } from "node:path";
-import type { AmbiguousItem, Manifest, MediaType, Part, ShowItem, UnmatchedItem } from "../report/types.ts";
+import type { AmbiguousCandidate, AmbiguousItem, Manifest, MediaType, Part, ShowItem, UnmatchedItem } from "../report/types.ts";
 import { episodeFileName, movieTargetPath, seasonTargetDir, showRoot } from "../report/naming.ts";
 import { DEFAULT_LANGUAGES, searchMovie, searchTv } from "../tmdb/client.ts";
+import { scoreCandidates } from "../tmdb/match.ts";
 
 export interface ResolveOptions {
   report: string;
@@ -294,6 +295,68 @@ async function resolveUnmatchedItems(
   return { remaining, resolvedCount };
 }
 
+type AmbiguousGroupOutcome = { action: "resolved" } | { action: "skip" } | { action: "quit" };
+
+// Lets the user reject the pre-computed candidate list entirely and type a fresh search query
+// instead — same free-text search available for unmatched items, offered here too since the
+// automatic candidates for an ambiguous item are sometimes all wrong (e.g. every candidate is an
+// unrelated show that happened to score above the threshold, none of them the real one).
+// Anything typed that isn't a plain number, "s", or "q" is treated as a new query.
+async function resolveAmbiguousGroup(
+  type: MediaType,
+  group: AmbiguousItem[],
+  parts: LoadedPart[],
+  dir: string,
+  libraryRoot: string,
+  ask: AskFn,
+): Promise<AmbiguousGroupOutcome> {
+  const first = group[0]!;
+  let candidates: AmbiguousCandidate[] = first.candidates;
+
+  while (true) {
+    const answer = await ask('  Choix (numéro, nouvelle recherche, "s" pour passer, "q" pour quitter) : ');
+
+    if (answer === "q") return { action: "quit" };
+    if (answer === "s" || answer === "") return { action: "skip" };
+
+    if (/^\d+$/.test(answer)) {
+      const chosen = candidates[Number(answer) - 1];
+      if (!chosen) {
+        console.log("  Choix invalide.");
+        continue;
+      }
+      for (const item of group) {
+        applyResolution(parts, dir, type, item, chosen, libraryRoot);
+      }
+      return { action: "resolved" };
+    }
+
+    const searched = dedupeByTmdbId(
+      await (type === "movie"
+        ? searchMovie(answer, null, DEFAULT_LANGUAGES)
+        : searchTv(answer, null, DEFAULT_LANGUAGES)),
+    );
+
+    if (searched.length === 0) {
+      console.log("  Aucun résultat.");
+      continue;
+    }
+
+    candidates = scoreCandidates(answer, null, searched)
+      .slice(0, 5)
+      .map((scored) => ({
+        tmdbId: scored.candidate.tmdbId,
+        title: scored.candidate.title,
+        year: scored.candidate.year ?? 0,
+        score: Math.round(scored.score * 1000) / 1000,
+      }));
+
+    candidates.forEach((candidate, index) => {
+      console.log(`  ${index + 1}. ${candidate.title} (${candidate.year}) — score ${candidate.score} — tmdb#${candidate.tmdbId}`);
+    });
+  }
+}
+
 export async function runResolve(argv: string[]): Promise<void> {
   const options = parseResolveArgs(argv);
   const dir = dirname(options.report);
@@ -350,31 +413,20 @@ export async function runResolve(argv: string[]): Promise<void> {
         console.log(`  ${index + 1}. ${candidate.title} (${candidate.year}) — score ${candidate.score} — tmdb#${candidate.tmdbId}`);
       });
 
-      const answer = await ask('  Choix (numéro, "s" pour passer, "q" pour quitter) : ');
+      const outcome = await resolveAmbiguousGroup(manifest.type, group, parts, dir, manifest.libraryRoot, ask);
 
-      if (answer === "q") {
+      if (outcome.action === "quit") {
         remaining.push(...group, ...groups.slice(i + 1).flat());
         break;
       }
 
-      if (answer === "s" || answer === "") {
+      if (outcome.action === "skip") {
         remaining.push(...group);
         skippedAmbiguousCount += group.length;
         continue;
       }
 
-      const chosen = first.candidates[Number(answer) - 1];
-      if (!chosen) {
-        console.log("  Choix invalide, groupe laissé de côté (relance resolve pour retenter).");
-        remaining.push(...group);
-        skippedAmbiguousCount += group.length;
-        continue;
-      }
-
-      for (const item of group) {
-        applyResolution(parts, dir, manifest.type, item, chosen, manifest.libraryRoot);
-        resolvedAmbiguousCount++;
-      }
+      resolvedAmbiguousCount += group.length;
     }
 
     remainingAmbiguous = remaining;
