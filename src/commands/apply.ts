@@ -133,8 +133,14 @@ async function askConfirmation(question: string): Promise<boolean> {
 
 // A source directory is only ever worth keeping around for the video files it might still hold
 // (e.g. an unmatched OAV) — leftover posters, .nfo, or other non-video sidecar files aren't. Once
-// the last video is out, remove the directory and whatever non-video junk remains in it. Single
-// level only (the immediate parent), not cascaded further up.
+// the last video is out, remove the directory and whatever non-video junk remains in it, then
+// check its parent too, and keep climbing as long as each ancestor is itself left with no video
+// files — e.g. a messy wrapper folder ("Show.Integrale.1080p.../Show.S01.../file.mkv") that only
+// empties out once every season subfolder inside it has already been individually removed. This
+// is safe to cascade (unlike the single-level cleanup this replaces) precisely because it has a
+// hard, known boundary to climb toward: manifest.sourceRoot. A sibling folder with unrelated
+// content anywhere in the chain naturally stops the climb, since walkVideoFiles on that ancestor
+// would then find its videos and abort right there.
 //
 // The scan root itself (manifest.sourceRoot) is never removed this way, even if it ends up
 // holding no video files — that happens whenever a file sat directly at the root of --dir (no
@@ -146,18 +152,24 @@ async function askConfirmation(question: string): Promise<boolean> {
 // sourceRoot is missing on reports generated before this field existed; with no way to know
 // where the scan root was, cleanup is skipped entirely for those rather than risk the same
 // destruction — never proceed on the assumption that a directory isn't the root.
-async function removeIfNoVideoFiles(dir: string, sourceRoot: string | undefined): Promise<void> {
-  if (sourceRoot === undefined || resolve(dir) === resolve(sourceRoot)) {
-    return;
-  }
+async function removeIfNoVideoFiles(startDir: string, sourceRoot: string | undefined): Promise<void> {
+  if (sourceRoot === undefined) return;
 
-  try {
-    const videoFiles = await walkVideoFiles(dir);
-    if (videoFiles.length === 0) {
+  let dir = startDir;
+
+  while (resolve(dir) !== resolve(sourceRoot)) {
+    try {
+      const videoFiles = await walkVideoFiles(dir);
+      if (videoFiles.length > 0) return;
       await rm(dir, { recursive: true, force: true });
+    } catch {
+      // Directory already gone, inaccessible, or a race added a video back — not fatal either way.
+      return;
     }
-  } catch {
-    // Directory already gone, inaccessible, or a race added a video back — not fatal either way.
+
+    const parent = dirname(dir);
+    if (parent === dir) return; // reached the filesystem root — should be unreachable, but never loop forever
+    dir = parent;
   }
 }
 
