@@ -84,7 +84,7 @@ function parseScanArgs(argv: string[]): ScanOptions {
   }
 
   if (values.type !== "movie" && values.type !== "tv" && values.type !== "anime") {
-    throw new Error(`--type invalide: "${values.type}" (attendu: movie, tv ou anime)`);
+    throw new Error(`invalid --type: "${values.type}" (expected: movie, tv, or anime)`);
   }
 
   return {
@@ -128,7 +128,7 @@ export async function runScan(argv: string[]): Promise<void> {
   const options = parseScanArgs(argv);
 
   const files = await walkVideoFiles(options.dir);
-  console.log(`${files.length} fichier(s) vidéo trouvé(s) dans ${options.dir}`);
+  console.log(`${files.length} video file(s) found in ${options.dir}`);
 
   const movies: MovieItem[] = [];
   const showsByTmdbId = new Map<number, ShowItem>();
@@ -165,8 +165,8 @@ export async function runScan(argv: string[]): Promise<void> {
     }
 
     if (!parsed) {
-      console.log("✗ non parsable");
-      unmatched.push({ oldPath, reason: "impossible d'extraire le titre/l'épisode du nom de fichier" });
+      console.log("✗ not parsable");
+      unmatched.push({ oldPath, reason: "could not extract title/episode from file name" });
       continue;
     }
 
@@ -213,10 +213,10 @@ export async function runScan(argv: string[]): Promise<void> {
     }
 
     if (result.kind === "unmatched") {
-      console.log("✗ aucun match TMDB");
+      console.log("✗ no TMDB match");
       unmatched.push({
         oldPath,
-        reason: "aucun résultat TMDB",
+        reason: "no TMDB result",
         parsedTitle: parsed.title,
         parsedYear: parsed.year,
         ...(parsed.kind === "episode"
@@ -227,7 +227,7 @@ export async function runScan(argv: string[]): Promise<void> {
     }
 
     if (result.kind === "ambiguous") {
-      console.log(`? ambigu (${result.candidates.length} candidats)`);
+      console.log(`? ambiguous (${result.candidates.length} candidates)`);
       ambiguous.push({
         oldPath,
         parsedTitle: parsed.title,
@@ -292,11 +292,11 @@ export async function runScan(argv: string[]): Promise<void> {
   const episodeCount = shows.reduce((n, s) => n + s.seasons.reduce((m, se) => m + se.episodes.length, 0), 0);
   const matchedCount = movies.length + episodeCount;
 
-  console.log(`\nRapport écrit : ${manifestPath}`);
-  console.log(`${matchedCount} identifié(s), ${ambiguous.length} ambigu(s), ${unmatched.length} non identifié(s)`);
+  console.log(`\nReport written: ${manifestPath}`);
+  console.log(`${matchedCount} matched, ${ambiguous.length} ambiguous, ${unmatched.length} unmatched`);
 
   if (options.render) {
     const htmlPath = await renderReport(manifestPath);
-    console.log(`Page générée : ${htmlPath}`);
+    console.log(`Page generated: ${htmlPath}`);
   }
 }

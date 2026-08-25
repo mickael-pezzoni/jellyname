@@ -5,7 +5,7 @@ import { runResolve } from "./commands/resolve.ts";
 import { runApply } from "./commands/apply.ts";
 import { runRender } from "./commands/render.ts";
 
-const USAGE = `jellyname — renomme des médias (films/séries/anime) selon la convention Jellyfin via TMDB
+const USAGE = `jellyname — renames media (movies/tv/anime) to the Jellyfin naming convention via TMDB
 
 Usage:
   jellyname scan --dir <path> --type <movie|tv|anime> --out <path> [--dest <path>] [--render]

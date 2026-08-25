@@ -36,5 +36,5 @@ export async function renderReport(manifestPath: string): Promise<string> {
 export async function runRender(argv: string[]): Promise<void> {
   const options = parseRenderArgs(argv);
   const outputPath = await renderReport(options.report);
-  console.log(`Page générée : ${outputPath}`);
+  console.log(`Page generated: ${outputPath}`);
 }

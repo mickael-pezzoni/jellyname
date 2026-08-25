@@ -97,7 +97,7 @@ interface ValidationResult {
 // move, not a same-report collision, and must never be flipped back to failed here. A pending
 // item that happens to share a path with a done item isn't flagged as a duplicate either; it
 // falls through to the normal move attempt, where moveFile reports the accurate, specific reason
-// ("un fichier existe déjà à la destination") instead of the more generic duplicate message.
+// ("a file already exists at the destination") instead of the more generic duplicate message.
 function validate(parts: LoadedPart[]): ValidationResult {
   const errors: string[] = [];
   const byNewPath = new Map<string, QueuedItem[]>();
@@ -106,7 +106,7 @@ function validate(parts: LoadedPart[]): ValidationResult {
     for (const entry of collectItems(loadedPart)) {
       const { item, label } = entry;
       if (!item.oldPath || !item.newPath) {
-        errors.push(`item invalide (chemin manquant) dans ${loadedPart.fileName}: ${label}`);
+        errors.push(`invalid item (missing path) in ${loadedPart.fileName}: ${label}`);
         continue;
       }
       if (item.status === "done") continue;
@@ -179,11 +179,11 @@ async function moveFile(
   sourceRoot: string | undefined,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!(await Bun.file(oldPath).exists())) {
-    return { ok: false, error: "fichier source introuvable" };
+    return { ok: false, error: "source file not found" };
   }
 
   if (await Bun.file(newPath).exists()) {
-    return { ok: false, error: "un fichier existe déjà à la destination" };
+    return { ok: false, error: "a file already exists at the destination" };
   }
 
   await mkdir(dirname(newPath), { recursive: true });
@@ -212,21 +212,21 @@ export async function runApply(argv: string[]): Promise<void> {
 
   const { errors: validationErrors, duplicateGroups } = validate(parts);
   if (validationErrors.length > 0) {
-    console.error("Rapport invalide, apply annulé :");
+    console.error("Invalid report, apply aborted:");
     for (const error of validationErrors) console.error(`  - ${error}`);
     process.exitCode = 1;
     return;
   }
 
   if (duplicateGroups.size > 0) {
-    console.log(`${duplicateGroups.size} newPath en double détecté(s), ignoré(s) :`);
+    console.log(`${duplicateGroups.size} duplicate newPath(s) detected, skipped:`);
     const touchedParts = new Set<string>();
 
     for (const [newPath, group] of duplicateGroups) {
-      console.log(`  - ${newPath} (${group.length} fichiers)`);
+      console.log(`  - ${newPath} (${group.length} files)`);
       for (const { item, partFileName } of group) {
         item.status = "failed";
-        item.error = "newPath en double avec un autre item du rapport";
+        item.error = "newPath duplicated with another item in the report";
         touchedParts.add(partFileName);
       }
     }
@@ -250,19 +250,19 @@ export async function runApply(argv: string[]): Promise<void> {
   });
 
   if (toProcess.length === 0) {
-    console.log("Rien à appliquer (tout est déjà fait, ou en échec sans --retry-failed).");
+    console.log("Nothing to apply (everything already done, or failed without --retry-failed).");
     notifyAmbiguous(manifest.ambiguous.length, options.report);
     return;
   }
 
   console.log(
-    `${toProcess.length} fichier(s) à traiter (${allItems.length - toProcess.length} déjà fait(s)/ignoré(s) sur ${allItems.length} au total).`,
+    `${toProcess.length} file(s) to process (${allItems.length - toProcess.length} already done/skipped out of ${allItems.length} total).`,
   );
 
   if (!options.yes) {
-    const confirmed = await askConfirmation(`Confirmer l'application de ${toProcess.length} renommage(s) ? [y/N] `);
+    const confirmed = await askConfirmation(`Confirm applying ${toProcess.length} rename(s)? [y/N] `);
     if (!confirmed) {
-      console.log("Annulé.");
+      console.log("Cancelled.");
       return;
     }
   }
@@ -293,13 +293,13 @@ export async function runApply(argv: string[]): Promise<void> {
     await writeFile(loadedPart.path, JSON.stringify(loadedPart.part, null, 2));
   }
 
-  console.log(`\nTerminé : ${done} réussi(s), ${failed} échoué(s).`);
+  console.log(`\nDone: ${done} succeeded, ${failed} failed.`);
   notifyAmbiguous(manifest.ambiguous.length, options.report);
 }
 
 function notifyAmbiguous(count: number, reportPath: string): void {
   if (count === 0) return;
   console.log(
-    `\n${count} fichier(s) ambigu(s) n'ont pas été traités. Lance "jellyname resolve --report ${reportPath}" pour les trancher.`,
+    `\n${count} ambiguous file(s) were not processed. Run "jellyname resolve --report ${reportPath}" to resolve them.`,
   );
 }
