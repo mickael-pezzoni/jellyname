@@ -212,9 +212,13 @@ async function resolveUnmatchedItems(
     }
 
     let candidates = dedupeByTmdbId(
+      // Not passing first.parsedYear here: it came from the same parse that already failed to
+      // identify this file, and can itself be wrong (e.g. an episode literally titled "2010"
+      // misread as a release year) — silently constraining a manually-typed query by it can
+      // suppress the correct result outright rather than just rank it lower.
       await (type === "movie"
-        ? searchMovie(query, first.parsedYear, DEFAULT_LANGUAGES)
-        : searchTv(query, first.parsedYear, DEFAULT_LANGUAGES)),
+        ? searchMovie(query, null, DEFAULT_LANGUAGES)
+        : searchTv(query, null, DEFAULT_LANGUAGES)),
     );
 
     while (candidates.length === 0) {

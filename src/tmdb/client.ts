@@ -103,8 +103,12 @@ type RawSearch = (query: string, year?: number | null, language?: string) => Pro
 // Queries every language in turn (not just until one succeeds) and concatenates all results,
 // duplicates included — matchTitle/scoreCandidates picks whichever localized title of a given
 // movie/show scores best against the parsed filename, since we don't know upfront which
-// language the filename itself was named in. Within each language, a lone mid-title number
-// (see stripLoneNumberToken) is retried once if the plain query comes back empty.
+// language the filename itself was named in. Within each language: a lone mid-title number (see
+// stripLoneNumberToken) is retried once if the plain query comes back empty, and if a year was
+// given and still nothing comes back, one more retry drops the year entirely — a parsed year can
+// itself be wrong (e.g. an episode literally titled "2010" misread as a release year), and TMDB's
+// year filter is strict enough that a wrong one suppresses the correct result outright rather
+// than just ranking it lower.
 async function searchAllLanguages(
   raw: RawSearch,
   query: string,
@@ -115,10 +119,16 @@ async function searchAllLanguages(
 
   for (const language of languages) {
     let candidates = await raw(query, year, language);
+
     if (candidates.length === 0) {
       const stripped = stripLoneNumberToken(query);
       if (stripped) candidates = await raw(stripped, year, language);
     }
+
+    if (candidates.length === 0 && year) {
+      candidates = await raw(query, null, language);
+    }
+
     results.push(...candidates);
   }
 
