@@ -32,7 +32,8 @@ jellyname scan --dir /media/tv --type tv --out ./report
 
 # 2. Manually resolve ambiguous TMDB matches (confidence score below threshold)
 jellyname resolve --report ./report/manifest.json
-# walks through ambiguous items one by one: pick a candidate number, "s" to skip, "q" to quit
+# walks through ambiguous items one by one: pick a candidate number, type anything else to
+# search again, "s" to skip, "q" to quit
 
 # 3. Generate an HTML page to browse the report in a web browser
 jellyname render --report ./report/manifest.json
